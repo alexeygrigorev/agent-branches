@@ -11,6 +11,7 @@ from agent_branches.client import (
     AgentBranchesClient,
     AgentBranchesConnectionError,
     AgentBranchesError,
+    BatchExecutionError,
     StaleVectorError,
     TokenExpiredError,
     TokenRevokedError,
@@ -228,6 +229,19 @@ def format_checks_result(res: dict) -> str:
     return "\n".join(lines)
 
 
+def format_batch_error_receipt(err: BatchExecutionError) -> str:
+    """Format structured failure receipt for BatchExecutionError."""
+    lines = [
+        f"Error: Batch push failed at event index {err.failed_index}",
+        f"Underlying cause: {err.original_error}",
+        f"Ambiguous event (mutation status unconfirmed): {err.ambiguous_event}",
+        f"Succeeded events ({len(err.succeeded)}): {json.dumps(err.succeeded) if err.succeeded else 'none'}",
+        f"Unattempted events ({len(err.unattempted_events)}): {json.dumps(err.unattempted_events) if err.unattempted_events else 'none'}",
+        "Guarantee: Succeeded events are clearly demarcated as committed and NEVER replayed.",
+    ]
+    return "\n".join(lines)
+
+
 def build_parser() -> argparse.ArgumentParser:
 
     """Construct argument parser for agent-branches CLI."""
@@ -290,6 +304,42 @@ def build_parser() -> argparse.ArgumentParser:
     )
     push_parser.add_argument("--server", help="Coordinator URL")
     push_parser.add_argument("--json", action="store_true", help="Output raw JSON")
+
+    # push-batch command
+    push_batch_parser = subparsers.add_parser(
+        "push-batch", help="Register a batch of WIP commit pushes"
+    )
+    push_batch_parser.add_argument(
+        "--events-file",
+        help="Path to JSON file containing array of push event objects",
+    )
+    push_batch_parser.add_argument(
+        "--event",
+        action="append",
+        help="JSON string representing a single push event (can be specified multiple times)",
+    )
+    push_batch_parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=3,
+        help="Max retries for transient failures (default: 3)",
+    )
+    push_batch_parser.add_argument(
+        "--retry-backoff",
+        type=float,
+        default=0.05,
+        help="Retry backoff in seconds (default: 0.05)",
+    )
+    push_batch_parser.add_argument(
+        "--token",
+        help="Bearer token for push events (or $TASK_TOKEN / $AGENT_TOKEN)",
+    )
+    push_batch_parser.add_argument(
+        "--admin-token",
+        help="Admin bearer token for authorized pushes (or $ADMIN_TOKEN)",
+    )
+    push_batch_parser.add_argument("--server", help="Coordinator URL")
+    push_batch_parser.add_argument("--json", action="store_true", help="Output raw JSON")
 
     # status command
     status_parser = subparsers.add_parser("status", help="Query coordinator and radar status")
@@ -404,6 +454,118 @@ def handle_push(args: argparse.Namespace, client: AgentBranchesClient, as_json: 
         print(format_push_result(res))
     return 0
 
+
+def cmd_push_batch(
+    args: argparse.Namespace,
+    client: Optional[AgentBranchesClient] = None,
+    as_json: Optional[bool] = None,
+) -> int:
+    """Execute push-batch CLI subcommand."""
+    if client is None:
+        server_url = getattr(args, "server", None)
+        client = AgentBranchesClient(server_url=server_url)
+    if as_json is None:
+        as_json = bool(getattr(args, "json", False))
+
+    events: List[dict] = []
+
+    # Read events from --events-file if specified
+    events_file = getattr(args, "events_file", None)
+    if events_file:
+        try:
+            with open(events_file, "r", encoding="utf-8") as f:
+                file_content = f.read()
+        except OSError as exc:
+            print(f"Error reading events file '{events_file}': {exc}", file=sys.stderr)
+            return 2
+
+        try:
+            file_events = json.loads(file_content)
+        except json.JSONDecodeError as exc:
+            print(f"Error parsing JSON from events file '{events_file}': {exc}", file=sys.stderr)
+            return 2
+
+        if not isinstance(file_events, list):
+            print(
+                f"Error: events file '{events_file}' must contain a JSON array of event objects",
+                file=sys.stderr,
+            )
+            return 2
+        events.extend(file_events)
+
+    # Read events from repeatable --event if specified
+    event_strings = getattr(args, "event", None)
+    if event_strings:
+        for ev_str in event_strings:
+            try:
+                ev_obj = json.loads(ev_str)
+            except json.JSONDecodeError as exc:
+                print(f"Error parsing --event JSON '{ev_str}': {exc}", file=sys.stderr)
+                return 2
+
+            if not isinstance(ev_obj, dict):
+                print(
+                    f"Error: --event must be a JSON object, got {type(ev_obj).__name__}",
+                    file=sys.stderr,
+                )
+                return 2
+            events.append(ev_obj)
+
+    if not events_file and not event_strings:
+        print(
+            "Error: either --events-file or at least one --event must be specified",
+            file=sys.stderr,
+        )
+        return 2
+
+    if len(events) == 0:
+        print("Error: events list cannot be empty", file=sys.stderr)
+        return 2
+
+    max_retries = getattr(args, "max_retries", None)
+    if max_retries is None:
+        max_retries = 3
+
+    retry_backoff = getattr(args, "retry_backoff", None)
+    if retry_backoff is None:
+        retry_backoff = 0.05
+
+    token = getattr(args, "token", None)
+    admin_token = getattr(args, "admin_token", None)
+
+    try:
+        results = client.push_batch(
+            events=events,
+            token=token,
+            admin_token=admin_token,
+            max_retries=max_retries,
+            retry_backoff=retry_backoff,
+        )
+    except (ValueError, TypeError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
+    except BatchExecutionError as exc:
+        if as_json:
+            payload = {
+                "error": "batch_push_failed",
+                "failed_index": exc.failed_index,
+                "original_error": str(exc.original_error),
+                "ambiguous_event": exc.ambiguous_event,
+                "succeeded": exc.succeeded,
+                "unattempted_events": exc.unattempted_events,
+                "guarantee": "Succeeded events are clearly demarcated as committed and NEVER replayed.",
+            }
+            print(json.dumps(payload, indent=2), file=sys.stderr)
+        else:
+            print(format_batch_error_receipt(exc), file=sys.stderr)
+        return 1
+
+    print(json.dumps(results, indent=2))
+    return 0
+
+
+# Handler alias
+handle_push_batch = cmd_push_batch
 
 
 def handle_status(args: argparse.Namespace, client: AgentBranchesClient, as_json: bool) -> int:
@@ -528,6 +690,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return 1
         elif args.command == "push":
             return handle_push(args, client, as_json)
+        elif args.command == "push-batch":
+            return cmd_push_batch(args, client, as_json)
         elif args.command == "status":
             return handle_status(args, client, as_json)
         elif args.command == "ack":
@@ -542,6 +706,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
     except StaleVectorError as exc:
         print(f"Conflict Error (409): Stale vector - {exc.message}", file=sys.stderr)
+        return 1
+    except BatchExecutionError as exc:
+        if as_json:
+            payload = {
+                "error": "batch_push_failed",
+                "failed_index": exc.failed_index,
+                "original_error": str(exc.original_error),
+                "ambiguous_event": exc.ambiguous_event,
+                "succeeded": exc.succeeded,
+                "unattempted_events": exc.unattempted_events,
+                "guarantee": "Succeeded events are clearly demarcated as committed and NEVER replayed.",
+            }
+            print(json.dumps(payload, indent=2), file=sys.stderr)
+        else:
+            print(format_batch_error_receipt(exc), file=sys.stderr)
         return 1
     except TokenExpiredError as exc:
         print(
