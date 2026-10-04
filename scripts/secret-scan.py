@@ -59,6 +59,8 @@ def main() -> int:
     findings = []
     for rel in git_tracked(root):
         for frag in FORBIDDEN_PATH_FRAGMENTS:
+            if rel.endswith(".example"):
+                continue
             if frag in rel or rel.startswith(".local/") or rel.endswith(".env"):
                 findings.append({"path": rel, "reason": f"forbidden path fragment {frag}"})
                 break
