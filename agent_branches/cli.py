@@ -322,13 +322,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-retries",
         type=int,
         default=3,
-        help="Max retries for transient connection errors (mutating pushes fail closed without replay)",
+        help="Compatibility parameter; push-batch operates pure fail-closed on mutating events without automatic retries",
     )
     push_batch_parser.add_argument(
         "--retry-backoff",
         type=float,
         default=0.05,
-        help="Retry backoff in seconds for transient connection errors",
+        help="Compatibility parameter; push-batch operates pure fail-closed on mutating events without automatic retries",
     )
     push_batch_parser.add_argument(
         "--token",
