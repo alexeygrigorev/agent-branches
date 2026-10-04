@@ -294,71 +294,18 @@ class TestPushBatchRobustRetry(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
-    def test_05_transient_429_rate_limit_with_recovery(self):
-        """Test 5: Transient HTTP 429 Rate Limiting with recovery.
+    def test_05_rate_limit_429_fails_closed_without_blind_retry(self):
+        """Test 5: Rate limit (HTTP 429) fails closed without blind mutating retry (C1672).
 
-        HTTP 429 is a pre-mutation rejection at the gateway/rate-limiter before
-        coordinator mutation occurs. Handler returns 429 on first attempt, then 200.
-        Verify 429 is safely retried with exponential backoff and batch completes.
+        In un-idempotent mutating POST /events/push, any failure during/after dispatch
+        cannot be proven to precede state mutation across arbitrary backends.
+        Handler returns 429.
+        Verify fails closed immediately on attempt 0 without retrying (attempts == 1).
         """
         attempts = 0
         attempts_lock = threading.Lock()
 
-        class Transient429Handler(MockL1Handler):
-            def do_POST(self):
-                nonlocal attempts
-                path = urllib.parse.urlparse(self.path).path
-                if path == "/events/push":
-                    with attempts_lock:
-                        attempts += 1
-                        current_attempt = attempts
-                    if current_attempt == 1:
-                        self._send_json(
-                            429,
-                            {
-                                "error": "rate_limited",
-                                "message": "Too many requests, slow down",
-                            },
-                        )
-                        return
-                super().do_POST()
-
-        server, url, state = _start_custom_server(Transient429Handler)
-        try:
-            client = AgentBranchesClient(server_url=url, timeout=2.0)
-            task = client.create_task(
-                repo="https://github.com/repo.git",
-                base_sha="0" * 40,
-                intent="Testing transient 429",
-                branch="main",
-                agent="rate-limited-worker",
-            )
-            sha = "5" * 40
-            event = {"task_id": task["taskId"], "head_sha": sha, "intent": "Rate limit test"}
-
-            start_t = time.time()
-            results = client.push_batch([event], max_retries=3, retry_backoff=0.02)
-            elapsed = time.time() - start_t
-
-            self.assertEqual(len(results), 1)
-            self.assertTrue(results[0].get("accepted"))
-            self.assertEqual(attempts, 2, "Expected 2 attempts (1 rate-limit + 1 retry success)")
-            self.assertGreaterEqual(elapsed, 0.018, "Backoff sleep was not applied on 429 retry")
-        finally:
-            server.shutdown()
-            server.server_close()
-
-    def test_06_rate_limit_retry_exhaustion(self):
-        """Test 6: Rate limit (HTTP 429) retry exhaustion.
-
-        Handler persistently returns 429.
-        Verify retries up to max_retries with backoff, then raises BatchExecutionError
-        with failed_index == 0, ambiguous_event == event0, and subsequent events in unattempted_events.
-        """
-        attempts = 0
-        attempts_lock = threading.Lock()
-
-        class Persistent429Handler(MockL1Handler):
+        class Handler429(MockL1Handler):
             def do_POST(self):
                 nonlocal attempts
                 path = urllib.parse.urlparse(self.path).path
@@ -367,38 +314,98 @@ class TestPushBatchRobustRetry(unittest.TestCase):
                         attempts += 1
                     self._send_json(
                         429,
-                        {"error": "rate_limited", "message": "Persistent rate limiting"},
+                        {
+                            "error": "rate_limited",
+                            "message": "Too many requests, slow down",
+                        },
                     )
                     return
                 super().do_POST()
 
-        server, url, state = _start_custom_server(Persistent429Handler)
+        server, url, state = _start_custom_server(Handler429)
         try:
             client = AgentBranchesClient(server_url=url, timeout=2.0)
             task = client.create_task(
                 repo="https://github.com/repo.git",
                 base_sha="0" * 40,
-                intent="Testing 429 retry exhaustion",
+                intent="Testing 429 fail-closed",
                 branch="main",
-                agent="exhausted-worker",
+                agent="rate-limited-worker",
             )
-            event0 = {"task_id": task["taskId"], "head_sha": "6" * 40}
-            event1 = {"task_id": task["taskId"], "head_sha": "7" * 40}
+            sha = "5" * 40
+            event = {"task_id": task["taskId"], "head_sha": sha, "intent": "Rate limit test"}
 
-            max_retries = 3
             with self.assertRaises(BatchExecutionError) as ctx:
-                client.push_batch([event0, event1], max_retries=max_retries, retry_backoff=0.01)
+                client.push_batch([event], max_retries=3, retry_backoff=0.01)
 
             err = ctx.exception
             self.assertEqual(err.failed_index, 0)
-            self.assertEqual(err.ambiguous_event, event0)
+            self.assertEqual(err.ambiguous_event, event)
             self.assertEqual(err.succeeded, [])
-            self.assertEqual(err.completed, [])
-            self.assertEqual(len(err.unattempted_events), 1)
-            self.assertEqual(err.unattempted_events[0], event1)
             self.assertEqual(err.status_code, 429)
-            self.assertIsInstance(err.original_error, AgentBranchesAPIError)
-            self.assertEqual(attempts, 1 + max_retries, "Must attempt 1 initial + max_retries for 429")
+            self.assertEqual(attempts, 1, "Must fail closed immediately on attempt 0 without blind retries")
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_06_rate_limit_429_preserves_partial_success_and_unattempted(self):
+        """Test 6: Rate limit (HTTP 429) preserves partial success and unattempted events.
+
+        Event 0 succeeds (200), Event 1 receives 429, Event 2 is never dispatched.
+        Verify BatchExecutionError has len(err.succeeded) == 1, err.failed_index == 1,
+        err.ambiguous_event == event1, err.unattempted_events == [event2].
+        """
+        push_receipts = []
+        lock = threading.Lock()
+
+        class StepHandler(MockL1Handler):
+            def do_POST(self):
+                path = urllib.parse.urlparse(self.path).path
+                if path == "/events/push":
+                    with lock:
+                        push_receipts.append(1)
+                        count = len(push_receipts)
+                    if count == 1:
+                        # Event 0 succeeds
+                        super().do_POST()
+                        return
+                    else:
+                        # Event 1 receives 429
+                        try:
+                            self._read_json()
+                        except Exception:
+                            pass
+                        self._send_json(429, {"error": "rate_limited"})
+                        return
+                super().do_POST()
+
+        server, url, state = _start_custom_server(StepHandler)
+        try:
+            client = AgentBranchesClient(server_url=url, timeout=2.0)
+            task = client.create_task(
+                repo="https://github.com/repo.git",
+                base_sha="0" * 40,
+                intent="Testing 429 partial success",
+                branch="main",
+                agent="step-worker",
+            )
+            event0 = {"task_id": task["taskId"], "head_sha": "6" * 40}
+            event1 = {"task_id": task["taskId"], "head_sha": "7" * 40}
+            event2 = {"task_id": task["taskId"], "head_sha": "8" * 40}
+
+            with self.assertRaises(BatchExecutionError) as ctx:
+                client.push_batch([event0, event1, event2], max_retries=3, retry_backoff=0.01)
+
+            err = ctx.exception
+            self.assertEqual(err.failed_index, 1)
+            self.assertEqual(err.ambiguous_event, event1)
+            self.assertEqual(len(err.succeeded), 1)
+            self.assertEqual(len(err.unattempted_events), 1)
+            self.assertEqual(err.unattempted_events[0], event2)
+            self.assertEqual(err.status_code, 429)
+
+            with lock:
+                self.assertEqual(len(push_receipts), 2, "Event 0 + Event 1 attempted; Event 1 must not retry")
         finally:
             server.shutdown()
             server.server_close()

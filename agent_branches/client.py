@@ -409,19 +409,21 @@ class AgentBranchesClient:
           If any event fails validation or pre-resolution, raises ValueError/TypeError
           fail-closed, guaranteeing zero partial coordinator mutation for invalid inputs.
 
-        Phase 2: Forward-only sequential execution with safe rate-limit retry
+        Phase 2: Forward-only sequential execution with pure fail-closed mutation safety
         - Dispatches each push sequentially with the pre-resolved agent_id.
-        - Codex Principal C1662 / Two Generals safety:
-          * HTTP 429 (Rate Limiting) is a pre-mutation rejection at the gateway/rate-limiter
-            before any coordinator state mutation occurred; it is safely retriable with exponential backoff.
-          * Connection errors (AgentBranchesConnectionError) and HTTP 5xx errors during/after
-            dispatch are ambiguous in the absence of server-side idempotency keys. If the server
-            committed the push and then dropped the connection, a blind client retry duplicates side effects
-            or corrupts state. The client fails closed immediately without automatic mutating retry!
-        - Non-transient errors (400, 401, 403, 404, 409) fail immediately without retrying.
-        - On failure or exhausted retries, raises BatchExecutionError containing
-          structured receipts (succeeded, failed_index, original_error, unattempted_events, ambiguous_event),
-          preserving partial results and preventing replay hazards.
+        - Codex Principal C1662 / C1672 Two Generals safety:
+          * POST /events/push lacks server-side idempotency keys. Any network failure,
+            socket timeout, HTTP 5xx, or HTTP 429 during/after dispatch cannot be proven
+            to precede state mutation across arbitrary backends.
+          * To prevent duplicate mutations, head regression on ring eviction, or push counter
+            corruption, the client fails closed immediately on ANY failure without automatic
+            mutating retry!
+          * Callers receive BatchExecutionError containing structured receipts:
+            - succeeded: list of confirmed prior push responses
+            - failed_index: index of the failing event
+            - ambiguous_event: the event dispatched whose mutation status is unconfirmed
+            - unattempted_events: list of events that were never dispatched
+            - original_error: underlying exception
         """
         # Phase 1: Input pre-validation
         if not isinstance(events, list):
@@ -484,10 +486,9 @@ class AgentBranchesClient:
                 )
             resolved_agents.append(resolved_agent)
 
-        # Phase 2: Forward-only execution with transient retries
+        # Phase 2: Forward-only execution with pure fail-closed mutation safety
         results: List[Dict[str, Any]] = []
         for idx, ev in enumerate(events):
-            attempt = 0
             resolved_agent = resolved_agents[idx]
             task_id = ev.get("task_id") or ev.get("taskId")
             sha = ev.get("head_sha") or ev.get("sha") or ""
@@ -498,47 +499,37 @@ class AgentBranchesClient:
             ev_token = ev.get("token") or token
             ev_admin_token = ev.get("admin_token") or admin_token
 
-            while True:
-                try:
-                    res = self.push(
-                        task_id=task_id,
-                        head_sha=sha,
-                        base_sha=base_sha,
-                        files_changed=files_changed,
-                        intent=intent,
-                        test_provenance=test_provenance,
-                        agent_id=resolved_agent,
-                        token=ev_token,
-                        admin_token=ev_admin_token,
-                    )
-                    results.append(res)
-                    break
-                except Exception as err:
-                    # Codex Principal C1662 Two Generals safety:
-                    # Distinguish pre-mutation rejections from unconfirmed post-dispatch mutations:
-                    # - HTTP 429 (Rate Limiting) is a pre-mutation rejection: the coordinator
-                    #   rejected the request before any state mutation occurred. Safe to retry with backoff.
-                    # - Connection drops (AgentBranchesConnectionError) and HTTP 5xx: POST /events/push
-                    #   lacks server-side idempotency keys. If the coordinator committed the mutation
-                    #   and then dropped the connection or crashed, retrying would duplicate mutations
-                    #   or cause head regression. Fail closed immediately without automatic mutating retry!
-                    is_pre_mutation_rate_limited = (
-                        isinstance(err, AgentBranchesAPIError) and err.status_code == 429
-                    )
-                    if is_pre_mutation_rate_limited and attempt < max_retries:
-                        attempt += 1
-                        time.sleep(retry_backoff * (2 ** (attempt - 1)))
-                        continue
-
-                    unattempted = list(events[idx + 1:])
-                    raise BatchExecutionError(
-                        f"Batch execution failed at event index {idx}: {err}",
-                        succeeded=list(results),
-                        failed_index=idx,
-                        original_error=err,
-                        unattempted_events=unattempted,
-                        ambiguous_event=ev,
-                    ) from err
+            try:
+                res = self.push(
+                    task_id=task_id,
+                    head_sha=sha,
+                    base_sha=base_sha,
+                    files_changed=files_changed,
+                    intent=intent,
+                    test_provenance=test_provenance,
+                    agent_id=resolved_agent,
+                    token=ev_token,
+                    admin_token=ev_admin_token,
+                )
+                results.append(res)
+            except Exception as err:
+                # Codex Principal C1662 / C1672 Two Generals safety:
+                # In distributed HTTP systems without backend idempotency keys on POST /events/push,
+                # any network failure, socket timeout, HTTP 5xx, or HTTP 429 during/after dispatch
+                # cannot be proven to precede state mutation across arbitrary backends.
+                # To prevent duplicate mutations, head regression on ring eviction, or push counter
+                # corruption, the client fails closed immediately on ANY failure without automatic
+                # mutating retry! Callers receive BatchExecutionError with explicit ambiguous_event,
+                # succeeded receipts, and unattempted events for application-level handling.
+                unattempted = list(events[idx + 1:])
+                raise BatchExecutionError(
+                    f"Batch execution failed at event index {idx}: {err}",
+                    succeeded=list(results),
+                    failed_index=idx,
+                    original_error=err,
+                    unattempted_events=unattempted,
+                    ambiguous_event=ev,
+                ) from err
 
         return results
 
