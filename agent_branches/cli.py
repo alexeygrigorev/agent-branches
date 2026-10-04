@@ -237,7 +237,7 @@ def format_batch_error_receipt(err: BatchExecutionError) -> str:
         f"Ambiguous event (mutation status unconfirmed): {err.ambiguous_event}",
         f"Succeeded events ({len(err.succeeded)}): {json.dumps(err.succeeded) if err.succeeded else 'none'}",
         f"Unattempted events ({len(err.unattempted_events)}): {json.dumps(err.unattempted_events) if err.unattempted_events else 'none'}",
-        "Guarantee: Succeeded events are clearly demarcated as committed and NEVER replayed.",
+        "Invocation Guarantee: Succeeded events in this batch invocation were committed and not replayed. To resume without duplicate mutation, operator must dispatch only unattempted_events.",
     ]
     return "\n".join(lines)
 
@@ -322,13 +322,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-retries",
         type=int,
         default=3,
-        help="Max retries for transient failures (default: 3)",
+        help="Max retries for transient connection errors (mutating pushes fail closed without replay)",
     )
     push_batch_parser.add_argument(
         "--retry-backoff",
         type=float,
         default=0.05,
-        help="Retry backoff in seconds (default: 0.05)",
+        help="Retry backoff in seconds for transient connection errors",
     )
     push_batch_parser.add_argument(
         "--token",
@@ -553,7 +553,7 @@ def cmd_push_batch(
                 "ambiguous_event": exc.ambiguous_event,
                 "succeeded": exc.succeeded,
                 "unattempted_events": exc.unattempted_events,
-                "guarantee": "Succeeded events are clearly demarcated as committed and NEVER replayed.",
+                "guarantee": "Invocation Guarantee: Succeeded events in this batch invocation were committed and not replayed. To resume without duplicate mutation, operator must dispatch only unattempted_events.",
             }
             print(json.dumps(payload, indent=2), file=sys.stderr)
         else:
@@ -716,7 +716,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 "ambiguous_event": exc.ambiguous_event,
                 "succeeded": exc.succeeded,
                 "unattempted_events": exc.unattempted_events,
-                "guarantee": "Succeeded events are clearly demarcated as committed and NEVER replayed.",
+                "guarantee": "Invocation Guarantee: Succeeded events in this batch invocation were committed and not replayed. To resume without duplicate mutation, operator must dispatch only unattempted_events.",
             }
             print(json.dumps(payload, indent=2), file=sys.stderr)
         else:

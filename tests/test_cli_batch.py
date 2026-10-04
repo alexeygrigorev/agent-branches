@@ -352,7 +352,7 @@ class TestCLIBatchReceipts(unittest.TestCase):
                 self.assertIn(sha0, output)
                 self.assertIn("Unattempted events (1):", output)
                 self.assertIn(
-                    "Guarantee: Succeeded events are clearly demarcated as committed and NEVER replayed.",
+                    "Invocation Guarantee: Succeeded events in this batch invocation were committed and not replayed. To resume without duplicate mutation, operator must dispatch only unattempted_events.",
                     output,
                 )
 
