@@ -4,13 +4,15 @@ Verifies:
 - Pre-validation of input batch (types, non-empty, hex SHA-1, task/agent routing).
 - Pre-validation blind spot prevention (zero partial mutation when routing cannot resolve).
 - Happy-path sequential execution with head advancement and metadata persistence.
-- Transient HTTP 500 / 503 recovery with exponential backoff.
-- Transient HTTP 429 rate-limiting recovery.
-- Transient retry exhaustion raising BatchExecutionError with structured receipts.
-- Fail-immediate behavior on non-transient errors (HTTP 401, 403, 404).
-- Partial success preservation (completed events retained, unattempted events isolated).
-- BatchExecutionError structured properties and string representation.
-- MCP alias branches_push_batch compatibility.
+- Two Generals safety (C1662):
+  * Mutating HTTP 503 fails closed immediately without blind mutating retries.
+  * HTTP 429 pre-mutation rate-limiting recovery with exponential backoff.
+  * HTTP 429 retry exhaustion raising BatchExecutionError with structured receipts.
+  * Non-transient errors (HTTP 401, 403, 404) fail immediately.
+  * Partial success preservation (completed events retained, unattempted events isolated).
+  * Commit-then-timeout fail-closed behavior (no duplicate mutating push on drop/timeout).
+  * BatchExecutionError structured properties (succeeded, ambiguous_event, unattempted_events).
+  * MCP alias branches_push_batch compatibility.
 """
 
 import http.server
@@ -60,7 +62,7 @@ def _start_custom_server(
 
 
 class TestPushBatchRobustRetry(unittest.TestCase):
-    """Test suite verifying push_batch robustness and remediation of REV-SDK-PUSH-BATCH flaws."""
+    """Test suite verifying push_batch robustness, Two Generals safety, and C1662 remediation."""
 
     def setUp(self):
         self.server, self.thread, self.server_url, self.state = start_mock_l1_server(
@@ -225,60 +227,69 @@ class TestPushBatchRobustRetry(unittest.TestCase):
         self.assertEqual(task_rec["intent"], "Step 3: polish")
         self.assertEqual(task_rec["test_provenance"], "pytest: 46 passed")
 
-    def test_04_transient_503_error_with_recovery(self):
-        """Test 4: Transient HTTP 503 error with recovery.
+    def test_04_server_503_fails_closed_without_blind_retry(self):
+        """Test 4: Server 503 fail-closed safety (C1662 Two Generals).
 
-        Handler fails first 2 attempts with 503, succeeds on 3rd attempt.
-        Verify batch completes with backoff.
+        Because POST /events/push lacks server-side idempotency keys, an HTTP 503
+        returned during/after a mutating push could mean the server failed before
+        or after committing. To prevent duplicate mutations or head regression,
+        push_batch fails closed immediately without automatic mutating retry.
         """
         attempts = 0
         attempts_lock = threading.Lock()
 
-        class Transient503Handler(MockL1Handler):
+        class Fail503Handler(MockL1Handler):
             def do_POST(self):
                 nonlocal attempts
                 path = urllib.parse.urlparse(self.path).path
                 if path == "/events/push":
                     with attempts_lock:
                         attempts += 1
-                        current_attempt = attempts
-                    if current_attempt <= 2:
-                        self._send_json(
-                            503,
-                            {
-                                "error": "service_unavailable",
-                                "message": f"Transient failure attempt {current_attempt}",
-                            },
-                        )
-                        return
+                    self._send_json(
+                        503,
+                        {
+                            "error": "service_unavailable",
+                            "message": "Transient coordinator 503",
+                        },
+                    )
+                    return
                 super().do_POST()
 
-        server, url, state = _start_custom_server(Transient503Handler)
+        server, url, state = _start_custom_server(Fail503Handler)
         try:
             client = AgentBranchesClient(server_url=url, timeout=2.0)
             task = client.create_task(
                 repo="https://github.com/repo.git",
                 base_sha="0" * 40,
-                intent="Testing transient 503",
+                intent="Testing fail-closed 503",
                 branch="main",
-                agent="flaky-worker",
+                agent="fail-503-worker",
             )
             sha = "4" * 40
-            event = {
+            event0 = {
                 "task_id": task["taskId"],
                 "head_sha": sha,
-                "intent": "Transient recovery intent",
+                "intent": "Fail-closed 503 intent",
+            }
+            event1 = {
+                "task_id": task["taskId"],
+                "head_sha": "5" * 40,
+                "intent": "Subsequent event",
             }
 
-            start_t = time.time()
-            results = client.push_batch([event], max_retries=3, retry_backoff=0.02)
-            elapsed = time.time() - start_t
+            with self.assertRaises(BatchExecutionError) as ctx:
+                client.push_batch([event0, event1], max_retries=3, retry_backoff=0.01)
 
-            self.assertEqual(len(results), 1)
-            self.assertTrue(results[0].get("accepted"))
-            self.assertEqual(attempts, 3, "Expected exactly 3 attempts (2 failures + 1 success)")
-            # Backoff was: 0.02 * 2^0 (0.02) + 0.02 * 2^1 (0.04) = 0.06s minimum
-            self.assertGreaterEqual(elapsed, 0.05, "Exponential backoff sleep was not applied")
+            err = ctx.exception
+            self.assertEqual(err.failed_index, 0)
+            self.assertEqual(err.ambiguous_event, event0)
+            self.assertEqual(err.succeeded, [])
+            self.assertEqual(len(err.unattempted_events), 1)
+            self.assertEqual(err.unattempted_events[0], event1)
+            self.assertEqual(err.status_code, 503)
+            self.assertEqual(
+                attempts, 1, "503 on mutating push must fail closed immediately with 0 retries"
+            )
         finally:
             server.shutdown()
             server.server_close()
@@ -286,8 +297,9 @@ class TestPushBatchRobustRetry(unittest.TestCase):
     def test_05_transient_429_rate_limit_with_recovery(self):
         """Test 5: Transient HTTP 429 Rate Limiting with recovery.
 
-        Handler returns 429 on first attempt, then 200.
-        Verify 429 is classified as transient and batch completes.
+        HTTP 429 is a pre-mutation rejection at the gateway/rate-limiter before
+        coordinator mutation occurs. Handler returns 429 on first attempt, then 200.
+        Verify 429 is safely retried with exponential backoff and batch completes.
         """
         attempts = 0
         attempts_lock = threading.Lock()
@@ -324,25 +336,29 @@ class TestPushBatchRobustRetry(unittest.TestCase):
             sha = "5" * 40
             event = {"task_id": task["taskId"], "head_sha": sha, "intent": "Rate limit test"}
 
-            results = client.push_batch([event], max_retries=3, retry_backoff=0.01)
+            start_t = time.time()
+            results = client.push_batch([event], max_retries=3, retry_backoff=0.02)
+            elapsed = time.time() - start_t
+
             self.assertEqual(len(results), 1)
             self.assertTrue(results[0].get("accepted"))
             self.assertEqual(attempts, 2, "Expected 2 attempts (1 rate-limit + 1 retry success)")
+            self.assertGreaterEqual(elapsed, 0.018, "Backoff sleep was not applied on 429 retry")
         finally:
             server.shutdown()
             server.server_close()
 
-    def test_06_transient_retry_exhaustion(self):
-        """Test 6: Transient retry exhaustion.
+    def test_06_rate_limit_retry_exhaustion(self):
+        """Test 6: Rate limit (HTTP 429) retry exhaustion.
 
-        Handler persistently returns 503.
-        Verify BatchExecutionError is raised with failed_index == 0,
-        succeeded == [], and subsequent events in unattempted_events.
+        Handler persistently returns 429.
+        Verify retries up to max_retries with backoff, then raises BatchExecutionError
+        with failed_index == 0, ambiguous_event == event0, and subsequent events in unattempted_events.
         """
         attempts = 0
         attempts_lock = threading.Lock()
 
-        class Persistent503Handler(MockL1Handler):
+        class Persistent429Handler(MockL1Handler):
             def do_POST(self):
                 nonlocal attempts
                 path = urllib.parse.urlparse(self.path).path
@@ -350,19 +366,19 @@ class TestPushBatchRobustRetry(unittest.TestCase):
                     with attempts_lock:
                         attempts += 1
                     self._send_json(
-                        503,
-                        {"error": "service_unavailable", "message": "Persistent backend outage"},
+                        429,
+                        {"error": "rate_limited", "message": "Persistent rate limiting"},
                     )
                     return
                 super().do_POST()
 
-        server, url, state = _start_custom_server(Persistent503Handler)
+        server, url, state = _start_custom_server(Persistent429Handler)
         try:
             client = AgentBranchesClient(server_url=url, timeout=2.0)
             task = client.create_task(
                 repo="https://github.com/repo.git",
                 base_sha="0" * 40,
-                intent="Testing retry exhaustion",
+                intent="Testing 429 retry exhaustion",
                 branch="main",
                 agent="exhausted-worker",
             )
@@ -375,13 +391,14 @@ class TestPushBatchRobustRetry(unittest.TestCase):
 
             err = ctx.exception
             self.assertEqual(err.failed_index, 0)
+            self.assertEqual(err.ambiguous_event, event0)
             self.assertEqual(err.succeeded, [])
             self.assertEqual(err.completed, [])
             self.assertEqual(len(err.unattempted_events), 1)
             self.assertEqual(err.unattempted_events[0], event1)
-            self.assertEqual(err.status_code, 503)
+            self.assertEqual(err.status_code, 429)
             self.assertIsInstance(err.original_error, AgentBranchesAPIError)
-            self.assertEqual(attempts, 1 + max_retries, "Must attempt 1 initial + max_retries")
+            self.assertEqual(attempts, 1 + max_retries, "Must attempt 1 initial + max_retries for 429")
         finally:
             server.shutdown()
             server.server_close()
@@ -427,6 +444,7 @@ class TestPushBatchRobustRetry(unittest.TestCase):
 
             err = ctx.exception
             self.assertEqual(err.failed_index, 0)
+            self.assertEqual(err.ambiguous_event, event0)
             self.assertEqual(err.succeeded, [])
             self.assertEqual(len(err.unattempted_events), 1)
             self.assertEqual(err.unattempted_events[0], event1)
@@ -437,11 +455,12 @@ class TestPushBatchRobustRetry(unittest.TestCase):
             server.server_close()
 
     def test_08_partial_success_preservation(self):
-        """Test 8: Partial success preservation.
+        """Test 8: Partial success preservation with fail-closed mutation safety.
 
-        Event 0 succeeds, Event 1 fails (persistent 500).
+        Event 0 succeeds, Event 1 fails (500).
         Verify BatchExecutionError has len(err.succeeded) == 1, err.failed_index == 1,
-        err.unattempted_events contains Event 2, and Event 0 is NOT re-sent.
+        err.ambiguous_event == event1, err.unattempted_events contains Event 2,
+        and Event 0 is NOT re-sent.
         """
         sha0 = "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
         sha1 = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
@@ -490,9 +509,8 @@ class TestPushBatchRobustRetry(unittest.TestCase):
                 {"task_id": task["taskId"], "head_sha": sha2, "intent": "Step 2"},
             ]
 
-            max_retries = 2
             with self.assertRaises(BatchExecutionError) as ctx:
-                client.push_batch(events, max_retries=max_retries, retry_backoff=0.01)
+                client.push_batch(events, max_retries=2, retry_backoff=0.01)
 
             err = ctx.exception
             # Verify structured receipts
@@ -500,17 +518,18 @@ class TestPushBatchRobustRetry(unittest.TestCase):
             self.assertEqual(len(err.completed), 1)
             self.assertTrue(err.succeeded[0].get("accepted"))
             self.assertEqual(err.failed_index, 1)
+            self.assertEqual(err.ambiguous_event, events[1])
             self.assertEqual(len(err.unattempted_events), 1)
             self.assertEqual(err.unattempted_events[0], events[2])
             self.assertEqual(err.status_code, 500)
 
             # Verify push call history:
             # sha0 was called ONCE.
-            # sha1 was called (1 initial + 2 retries) = 3 times.
+            # sha1 was called ONCE (fails closed without blind mutating retry).
             # sha2 was NEVER called.
             with lock:
-                self.assertEqual(push_calls.count(sha0), 1, "Event 0 must not be re-sent during retries")
-                self.assertEqual(push_calls.count(sha1), 1 + max_retries)
+                self.assertEqual(push_calls.count(sha0), 1, "Event 0 must not be re-sent")
+                self.assertEqual(push_calls.count(sha1), 1, "Event 1 must fail closed immediately")
                 self.assertEqual(push_calls.count(sha2), 0, "Event 2 must remain unattempted")
 
             # Verify coordinator state preserved Event 0
@@ -527,6 +546,7 @@ class TestPushBatchRobustRetry(unittest.TestCase):
         api_err = AgentBranchesAPIError(503, "Service Unavailable", {"code": "OVERLOAD"})
         succeeded_list = [{"accepted": True, "head": "a" * 40}]
         unattempted_list = [{"head_sha": "c" * 40}]
+        ambiguous = {"head_sha": "b" * 40}
 
         batch_err = BatchExecutionError(
             message="Batch execution failed at index 1",
@@ -534,6 +554,7 @@ class TestPushBatchRobustRetry(unittest.TestCase):
             failed_index=1,
             original_error=api_err,
             unattempted_events=unattempted_list,
+            ambiguous_event=ambiguous,
         )
 
         self.assertIsInstance(batch_err, AgentBranchesAPIError)
@@ -544,10 +565,12 @@ class TestPushBatchRobustRetry(unittest.TestCase):
         self.assertEqual(batch_err.succeeded, succeeded_list)
         self.assertEqual(batch_err.completed, succeeded_list)
         self.assertEqual(batch_err.unattempted_events, unattempted_list)
+        self.assertEqual(batch_err.ambiguous_event, ambiguous)
         self.assertIs(batch_err.original_error, api_err)
 
         err_str = str(batch_err)
         self.assertIn("failed_at_index=1", err_str)
+        self.assertIn("ambiguous=True", err_str)
         self.assertIn("succeeded=1", err_str)
         self.assertIn("unattempted=1", err_str)
         self.assertIn("cause=", err_str)
@@ -560,10 +583,12 @@ class TestPushBatchRobustRetry(unittest.TestCase):
             failed_index=0,
             original_error=conn_err,
             unattempted_events=[{"head_sha": "1" * 40}],
+            ambiguous_event={"head_sha": "0" * 40},
         )
         self.assertEqual(batch_err2.status_code, 0)
         self.assertIsNone(batch_err2.payload)
         self.assertEqual(batch_err2.failed_index, 0)
+        self.assertEqual(batch_err2.ambiguous_event, {"head_sha": "0" * 40})
         self.assertEqual(batch_err2.succeeded, [])
         self.assertEqual(len(batch_err2.unattempted_events), 1)
 
@@ -578,6 +603,79 @@ class TestPushBatchRobustRetry(unittest.TestCase):
         task_rec = self.client.get_task(self.task_id)
         self.assertEqual(task_rec["head_sha"], sha)
         self.assertEqual(task_rec["intent"], "MCP batch push")
+
+    def test_11_commit_then_timeout_fails_closed_without_blind_retry(self):
+        """Test 11: Two Generals commit-then-timeout safety (C1662).
+
+        A custom HTTP handler receives POST /events/push, mutates coordinator state,
+        then abruptly terminates the connection before returning the HTTP response.
+        Assert that push_batch fails closed immediately, raises BatchExecutionError,
+        identifies err.ambiguous_event, and DOES NOT blindly retry (server push count
+        remains exactly 1, not 2).
+        """
+        push_receipts = []
+        lock = threading.Lock()
+
+        class CommitThenDropHandler(MockL1Handler):
+            def do_POST(self):
+                path = urllib.parse.urlparse(self.path).path
+                if path == "/events/push":
+                    try:
+                        body = self._read_json()
+                    except Exception as e:
+                        self._send_json(400, {"error": str(e)})
+                        return
+                    with lock:
+                        push_receipts.append(body)
+                    # Mutate coordinator state before dropping connection
+                    self.state.record_push(body)
+                    # Abruptly close the socket without sending HTTP response
+                    self.close_connection = True
+                    try:
+                        self.connection.shutdown(2)
+                        self.connection.close()
+                    except Exception:
+                        pass
+                    return
+                super().do_POST()
+
+        server, url, state = _start_custom_server(CommitThenDropHandler)
+        try:
+            client = AgentBranchesClient(server_url=url, timeout=2.0)
+            task = client.create_task(
+                repo="https://github.com/repo.git",
+                base_sha="0" * 40,
+                intent="Testing commit-then-drop",
+                branch="main",
+                agent="two-generals-worker",
+            )
+            sha = "e" * 40
+            event0 = {"task_id": task["taskId"], "head_sha": sha, "intent": "Commit then drop"}
+            event1 = {"task_id": task["taskId"], "head_sha": "f" * 40, "intent": "Subsequent"}
+
+            with self.assertRaises(BatchExecutionError) as ctx:
+                client.push_batch([event0, event1], max_retries=3, retry_backoff=0.01)
+
+            err = ctx.exception
+            # Fail-closed structured receipts
+            self.assertEqual(err.failed_index, 0)
+            self.assertEqual(err.ambiguous_event, event0)
+            self.assertEqual(err.succeeded, [])
+            self.assertEqual(len(err.unattempted_events), 1)
+            self.assertEqual(err.unattempted_events[0], event1)
+            self.assertIsInstance(err.original_error, AgentBranchesConnectionError)
+
+            # Assert coordinator state and push count
+            with lock:
+                self.assertEqual(len(push_receipts), 1, "Must NOT issue a second mutating push!")
+
+            task_rec = state.tasks.get(task["taskId"])
+            self.assertIsNotNone(task_rec)
+            self.assertEqual(task_rec["pushes"], 1, "Server push count must remain 1, not 2!")
+            self.assertEqual(task_rec["head_sha"], sha)
+        finally:
+            server.shutdown()
+            server.server_close()
 
 
 if __name__ == "__main__":
