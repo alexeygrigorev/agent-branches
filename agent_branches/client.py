@@ -3,7 +3,6 @@
 import copy
 import json
 import os
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -401,7 +400,7 @@ class AgentBranchesClient:
         max_retries: int = 3,
         retry_backoff: float = 0.05,
     ) -> List[Dict[str, Any]]:
-        """Register a batch of WIP commit pushes with upfront pre-validation and transient retries.
+        """Register a batch of WIP commit pushes with upfront pre-validation and pure fail-closed safety.
 
         Phase 1: Upfront validation & pre-resolution
         - Validates all events upfront (type, non-empty, 40-char hex SHA, task_id/agent_id).
