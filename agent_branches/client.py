@@ -3,6 +3,7 @@
 import copy
 import json
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -58,6 +59,38 @@ class TokenRevokedError(AgentBranchesAPIError):
     surface the revoked credentials to the operator.
     """
     pass
+
+
+class BatchExecutionError(AgentBranchesAPIError):
+    """Raised when one or more events in a push_batch fail.
+
+    Carries structured receipts so callers can inspect partial successes,
+    the exact failure index, the underlying cause, and unattempted events.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        succeeded: List[Dict[str, Any]],
+        failed_index: int,
+        original_error: Exception,
+        unattempted_events: List[Dict[str, Any]],
+    ):
+        status_code = getattr(original_error, "status_code", 0)
+        payload = getattr(original_error, "payload", None)
+        super().__init__(status_code, message, payload)
+        self.succeeded: List[Dict[str, Any]] = succeeded
+        self.completed: List[Dict[str, Any]] = succeeded
+        self.failed_index: int = failed_index
+        self.original_error: Exception = original_error
+        self.unattempted_events: List[Dict[str, Any]] = unattempted_events
+
+    def __str__(self) -> str:
+        return (
+            f"BatchExecutionError(failed_at_index={self.failed_index}, "
+            f"succeeded={len(self.succeeded)}, unattempted={len(self.unattempted_events)}, "
+            f"cause={self.original_error})"
+        )
 
 
 class AgentBranchesClient:
@@ -355,6 +388,141 @@ class AgentBranchesClient:
             req_headers["Authorization"] = f"Bearer {effective_token}"
 
         return self._request("POST", "/events/push", payload, headers=req_headers)
+
+    def push_batch(
+        self,
+        events: List[Dict[str, Any]],
+        token: Optional[str] = None,
+        admin_token: Optional[str] = None,
+        max_retries: int = 3,
+        retry_backoff: float = 0.05,
+    ) -> List[Dict[str, Any]]:
+        """Register a batch of WIP commit pushes with upfront pre-validation and transient retries.
+
+        Phase 1: Upfront validation & pre-resolution
+        - Validates all events upfront (type, non-empty, 40-char hex SHA, task_id/agent_id).
+        - Pre-resolves agent_id for all events BEFORE any mutating push is dispatched.
+          If any event fails validation or pre-resolution, raises ValueError/TypeError
+          fail-closed, guaranteeing zero partial coordinator mutation for invalid inputs.
+
+        Phase 2: Forward-only sequential execution with bounded exponential retry
+        - Dispatches each push sequentially with the pre-resolved agent_id.
+        - Classifies transient errors (connection failures, HTTP 429, HTTP >= 500)
+          and retries up to max_retries with exponential backoff.
+        - Non-transient errors (400, 401, 403, 404, 409) fail immediately without retrying.
+        - On failure or exhausted retries, raises BatchExecutionError containing
+          structured receipts (succeeded, failed_index, original_error, unattempted_events),
+          preserving partial results and preventing replay hazards.
+        """
+        # Phase 1: Input pre-validation
+        if not isinstance(events, list):
+            raise TypeError("events must be a list of event dictionaries")
+        if len(events) == 0:
+            raise ValueError("events list cannot be empty")
+        if not isinstance(max_retries, int) or max_retries < 0:
+            raise ValueError("max_retries must be an integer >= 0")
+        if not isinstance(retry_backoff, (int, float)) or retry_backoff < 0:
+            raise ValueError("retry_backoff must be a number >= 0")
+
+        resolved_agents: List[str] = []
+        for idx, ev in enumerate(events):
+            if not isinstance(ev, dict):
+                raise TypeError(f"event at index {idx} must be a dictionary")
+            sha = ev.get("head_sha") or ev.get("sha")
+            if not sha or not isinstance(sha, str):
+                raise ValueError(f"event at index {idx} missing required head_sha")
+            if len(sha) != 40 or not all(c in "0123456789abcdefABCDEF" for c in sha):
+                raise ValueError(
+                    f"event at index {idx} has invalid head_sha (must be 40-character hex SHA): {sha}"
+                )
+            task_id = ev.get("task_id") or ev.get("taskId")
+            agent_id = ev.get("agent_id") or ev.get("agentId")
+            if not task_id and not agent_id:
+                raise ValueError(f"event at index {idx} missing required task_id or agent_id")
+
+            # Pre-resolve agent_id
+            resolved_agent = None
+            if agent_id:
+                resolved_agent = str(agent_id)
+            elif task_id in self.task_to_agent:
+                resolved_agent = self.task_to_agent[task_id]
+            else:
+                lookup_token = (
+                    ev.get("token")
+                    or token
+                    or self.task_tokens.get(task_id)
+                    or ev.get("admin_token")
+                    or admin_token
+                    or os.environ.get("ADMIN_TOKEN")
+                )
+                try:
+                    task_rec = self.get_task(task_id, token=lookup_token)
+                    resolved_agent = (
+                        task_rec.get("agentId")
+                        or task_rec.get("agent_id")
+                        or task_rec.get("agent")
+                    )
+                except Exception as exc:
+                    raise ValueError(
+                        f"Cannot resolve agentId for task '{task_id}' at index {idx}: {exc}"
+                    ) from exc
+
+            if not resolved_agent:
+                raise ValueError(
+                    f"Cannot resolve agentId for task '{task_id}' at index {idx}. "
+                    "Task lookup failed or task record is missing agentId. "
+                    "Specify agent_id explicitly."
+                )
+            resolved_agents.append(resolved_agent)
+
+        # Phase 2: Forward-only execution with transient retries
+        results: List[Dict[str, Any]] = []
+        for idx, ev in enumerate(events):
+            attempt = 0
+            resolved_agent = resolved_agents[idx]
+            task_id = ev.get("task_id") or ev.get("taskId")
+            sha = ev.get("head_sha") or ev.get("sha") or ""
+            base_sha = ev.get("base_sha")
+            files_changed = ev.get("files_changed")
+            intent = ev.get("intent") or ev.get("intent_update")
+            test_provenance = ev.get("test_provenance")
+            ev_token = ev.get("token") or token
+            ev_admin_token = ev.get("admin_token") or admin_token
+
+            while True:
+                try:
+                    res = self.push(
+                        task_id=task_id,
+                        head_sha=sha,
+                        base_sha=base_sha,
+                        files_changed=files_changed,
+                        intent=intent,
+                        test_provenance=test_provenance,
+                        agent_id=resolved_agent,
+                        token=ev_token,
+                        admin_token=ev_admin_token,
+                    )
+                    results.append(res)
+                    break
+                except Exception as err:
+                    is_transient = isinstance(err, AgentBranchesConnectionError) or (
+                        isinstance(err, AgentBranchesAPIError)
+                        and (err.status_code >= 500 or err.status_code == 429)
+                    )
+                    if is_transient and attempt < max_retries:
+                        attempt += 1
+                        time.sleep(retry_backoff * (2 ** (attempt - 1)))
+                        continue
+                    unattempted = list(events[idx + 1:])
+                    raise BatchExecutionError(
+                        f"Batch execution failed at event index {idx}: {err}",
+                        succeeded=list(results),
+                        failed_index=idx,
+                        original_error=err,
+                        unattempted_events=unattempted,
+                    ) from err
+
+        return results
 
     def get_status(self, runner_token: Optional[str] = None) -> Dict[str, Any]:
         """Fetch current global coordinator and radar status (GET /status).
@@ -661,6 +829,20 @@ class AgentBranchesClient:
             intent=intent_update,
             test_provenance=test_provenance,
             agent_id=agent_id,
+        )
+
+    def branches_push_batch(
+        self,
+        events: List[Dict[str, Any]],
+        token: Optional[str] = None,
+        max_retries: int = 3,
+        retry_backoff: float = 0.05,
+    ) -> List[Dict[str, Any]]:
+        return self.push_batch(
+            events=events,
+            token=token,
+            max_retries=max_retries,
+            retry_backoff=retry_backoff,
         )
 
     def branches_get_status(self, task_id: Optional[str] = None) -> Dict[str, Any]:
