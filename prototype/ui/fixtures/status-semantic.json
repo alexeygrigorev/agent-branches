@@ -1,0 +1,187 @@
+{
+  "canonical": {
+    "name": "agent-branches-canonical",
+    "remote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical.git"
+  },
+  "agents": [
+    {
+      "agentId": "claude-0004",
+      "taskId": "task-s1",
+      "forkName": "agent-branches-canonical-claude-0004",
+      "forkRemote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical-claude-0004.git",
+      "ref": "refs/heads/main",
+      "intent": "Rename the shared auth helper and update its callers",
+      "baseSha": "9af31c42be07d5e6a1b3c8820f47c9de11a6b302",
+      "head": "b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0",
+      "pushes": 2,
+      "createdAt": "2026-10-03T14:02:11.000Z",
+      "lastPushAt": "2026-10-03T14:20:44.000Z",
+      "pushLog": [
+        {
+          "sha": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0",
+          "at": "2026-10-03T14:10:02.000Z",
+          "message": "wip: rename auth helper"
+        },
+        {
+          "sha": "b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0",
+          "at": "2026-10-03T14:20:44.000Z",
+          "message": "wip: update callers and tests"
+        }
+      ],
+      "testEvidence": {
+        "command": "npm test",
+        "exitCode": 0,
+        "head": "b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0",
+        "at": "2026-10-03T14:21:30.000Z"
+      }
+    },
+    {
+      "agentId": "codex-0005",
+      "taskId": "task-s2",
+      "forkName": "agent-branches-canonical-codex-0005",
+      "forkRemote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical-codex-0005.git",
+      "ref": "refs/heads/main",
+      "intent": "Rewrite the same auth helper with a new signature",
+      "baseSha": "9af31c42be07d5e6a1b3c8820f47c9de11a6b302",
+      "head": "c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1",
+      "pushes": 2,
+      "createdAt": "2026-10-03T14:03:27.000Z",
+      "lastPushAt": "2026-10-03T14:22:58.000Z",
+      "pushLog": [
+        {
+          "sha": "b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1",
+          "at": "2026-10-03T14:12:19.000Z",
+          "message": "wip: new helper signature"
+        },
+        {
+          "sha": "c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1",
+          "at": "2026-10-03T14:22:58.000Z",
+          "message": "wip: adapt tests to the new signature"
+        }
+      ],
+      "testEvidence": {
+        "command": "npm test",
+        "exitCode": 0,
+        "head": "c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1",
+        "at": "2026-10-03T14:23:41.000Z"
+      }
+    },
+    {
+      "agentId": "grok-0006",
+      "taskId": "task-s3",
+      "forkName": "agent-branches-canonical-grok-0006",
+      "forkRemote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical-grok-0006.git",
+      "ref": "refs/heads/main",
+      "intent": "Document the auth helper in the README",
+      "baseSha": "9af31c42be07d5e6a1b3c8820f47c9de11a6b302",
+      "head": "d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2",
+      "pushes": 1,
+      "createdAt": "2026-10-03T14:05:03.000Z",
+      "lastPushAt": "2026-10-03T14:18:12.000Z",
+      "pushLog": [
+        {
+          "sha": "d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2",
+          "at": "2026-10-03T14:18:12.000Z",
+          "message": "wip: auth helper docs"
+        }
+      ],
+      "testEvidence": {
+        "command": "npm test",
+        "exitCode": 0,
+        "head": "d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2",
+        "at": "2026-10-03T14:19:05.000Z"
+      }
+    }
+  ],
+  "heads": {
+    "claude-0004": "b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0",
+    "codex-0005": "c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1",
+    "grok-0006": "d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2"
+  },
+  "pairs": [
+    {
+      "pair": ["claude-0004", "codex-0005"],
+      "heads": {
+        "claude-0004": "b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0",
+        "codex-0005": "c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1"
+      },
+      "status": "conflict",
+      "kind": "test",
+      "evidence": { "tests_collected": 8, "tests_failed": 2, "details": "both agents rewrote the same auth helper; the combined build fails to link" },
+      "checkedAt": "2026-10-03T14:25:10.000Z",
+      "stale": false,
+      "activeWarningIds": ["warn-3"]
+    },
+    {
+      "pair": ["claude-0004", "grok-0006"],
+      "heads": {
+        "claude-0004": "b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0",
+        "grok-0006": "d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2"
+      },
+      "status": "unknown",
+      "evidence": "combined test run timed out after the 15s budget",
+      "checkedAt": "2026-10-03T14:25:11.000Z",
+      "stale": false,
+      "activeWarningIds": []
+    },
+    {
+      "pair": ["codex-0005", "grok-0006"],
+      "heads": {
+        "codex-0005": "c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1",
+        "grok-0006": "d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2"
+      },
+      "status": "clean",
+      "evidence": "merge-tree clean; combined test run passed",
+      "coverage": { "tests_collected": 5, "tests_failed": 0 },
+      "checkedAt": "2026-10-03T14:25:12.000Z",
+      "stale": false,
+      "activeWarningIds": []
+    }
+  ],
+  "warnings": [
+    {
+      "id": "warn-3",
+      "pair": ["claude-0004", "codex-0005"],
+      "headsAtIssue": {
+        "claude-0004": "b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0",
+        "codex-0005": "c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1"
+      },
+      "reason": "radar-conflict:test",
+      "status": "active",
+      "createdAt": "2026-10-03T14:25:10.000Z",
+      "invalidatedAt": null,
+      "acks": []
+    }
+  ],
+  "radarLog": [
+    {
+      "at": "2026-10-03T14:25:12.000Z",
+      "pair": ["codex-0005", "grok-0006"],
+      "heads": {
+        "a": "c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1",
+        "b": "d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2"
+      },
+      "reason": null
+    },
+    {
+      "at": "2026-10-03T14:25:11.000Z",
+      "pair": ["claude-0004", "grok-0006"],
+      "heads": {
+        "a": "b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0",
+        "b": "d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2"
+      },
+      "reason": null
+    },
+    {
+      "at": "2026-10-03T14:25:10.000Z",
+      "pair": ["claude-0004", "codex-0005"],
+      "heads": {
+        "a": "b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0",
+        "b": "c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1"
+      },
+      "reason": "radar-conflict:test"
+    }
+  ],
+  "lastRunnerReport": null,
+  "unprocessedPushes": []
+}

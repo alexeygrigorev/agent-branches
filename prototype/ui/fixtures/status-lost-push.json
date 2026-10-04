@@ -1,0 +1,241 @@
+{
+  "canonical": {
+    "name": "agent-branches-canonical",
+    "remote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical.git"
+  },
+  "agents": [
+    {
+      "agentId": "claude-0007",
+      "taskId": "task-0007",
+      "forkName": "agent-branches-canonical-claude-0007",
+      "forkRemote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical-claude-0007.git",
+      "ref": "refs/heads/main",
+      "intent": "Split the payments module into its own package",
+      "baseSha": "9af31c42be07d5e6a1b3c8820f47c9de11a6b302",
+      "head": "e4f5061a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d70",
+      "pushes": 2,
+      "createdAt": "2026-10-03T14:31:02.000Z",
+      "lastPushAt": "2026-10-03T14:58:27.000Z",
+      "pushLog": [
+        {
+          "sha": "d3e40519a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
+          "at": "2026-10-03T14:48:11.000Z",
+          "message": "wip: extract payments module"
+        },
+        {
+          "sha": "e4f5061a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d70",
+          "at": "2026-10-03T14:58:27.000Z",
+          "message": "wip: payments tests moved with the module"
+        }
+      ],
+      "testEvidence": {
+        "command": "npm test",
+        "exitCode": 0,
+        "head": "e4f5061a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d70",
+        "at": "2026-10-03T14:59:10.000Z"
+      }
+    },
+    {
+      "agentId": "codex-0008",
+      "taskId": "task-0008",
+      "forkName": "agent-branches-canonical-codex-0008",
+      "forkRemote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical-codex-0008.git",
+      "ref": "refs/heads/main",
+      "intent": "Switch config loading to environment variables",
+      "baseSha": "9af31c42be07d5e6a1b3c8820f47c9de11a6b302",
+      "head": "f5a6072b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e80",
+      "pushes": 2,
+      "createdAt": "2026-10-03T14:33:40.000Z",
+      "lastPushAt": "2026-10-03T14:56:03.000Z",
+      "pushLog": [
+        {
+          "sha": "e5f60718a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7",
+          "at": "2026-10-03T14:41:37.000Z",
+          "message": "wip: env-based config loader"
+        },
+        {
+          "sha": "f5a6072b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e80",
+          "at": "2026-10-03T14:56:03.000Z",
+          "message": "wip: drop the file-based loader"
+        }
+      ],
+      "testEvidence": {
+        "command": "npm test",
+        "exitCode": 0,
+        "head": "f5a6072b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e80",
+        "at": "2026-10-03T14:57:21.000Z"
+      }
+    },
+    {
+      "agentId": "grok-0009",
+      "taskId": "task-0009",
+      "forkName": "agent-branches-canonical-grok-0009",
+      "forkRemote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical-grok-0009.git",
+      "ref": "refs/heads/main",
+      "intent": "Fix the flaky retry test",
+      "baseSha": "9af31c42be07d5e6a1b3c8820f47c9de11a6b302",
+      "head": "6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b",
+      "pushes": 2,
+      "createdAt": "2026-10-03T14:35:15.000Z",
+      "lastPushAt": "2026-10-03T14:52:44.000Z",
+      "pushLog": [
+        {
+          "sha": "5a6b8c7d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b",
+          "at": "2026-10-03T14:44:52.000Z",
+          "message": "wip: retry test backoff"
+        },
+        {
+          "sha": "6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b",
+          "at": "2026-10-03T14:52:44.000Z",
+          "message": "wip: retry fix scoped to the test only"
+        }
+      ],
+      "testEvidence": {
+        "command": "npm test",
+        "exitCode": 0,
+        "head": "6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b",
+        "at": "2026-10-03T14:53:38.000Z"
+      }
+    }
+  ],
+  "heads": {
+    "claude-0007": "e4f5061a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d70",
+    "codex-0008": "f5a6072b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e80",
+    "grok-0009": "6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b"
+  },
+  "pairs": [
+    {
+      "pair": ["claude-0007", "codex-0008"],
+      "heads": {
+        "claude-0007": "e4f5061a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d70",
+        "codex-0008": "f5a6072b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e80"
+      },
+      "status": "conflict",
+      "kind": "textual",
+      "evidence": "both agents changed prototype/src/payments/index.ts",
+      "checkedAt": "2026-10-03T15:00:12.000Z",
+      "stale": false,
+      "activeWarningIds": ["warn-4"]
+    },
+    {
+      "pair": ["claude-0007", "grok-0009"],
+      "heads": {
+        "claude-0007": "e4f5061a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d70",
+        "grok-0009": "6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b"
+      },
+      "status": "not_checked",
+      "evidence": "earlier comparison at the recorded heads is void: a later push was never recorded",
+      "checkedAt": "2026-10-03T14:59:41.000Z",
+      "stale": true,
+      "unprocessedReason": "push notification for grok-0009 was not delivered after 3 attempts (worker responded 401)",
+      "activeWarningIds": []
+    },
+    {
+      "pair": ["codex-0008", "grok-0009"],
+      "heads": {
+        "codex-0008": "f5a6072b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e80",
+        "grok-0009": "6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b"
+      },
+      "status": "not_checked",
+      "evidence": "earlier comparison at the recorded heads is void: a later push was never recorded",
+      "checkedAt": "2026-10-03T14:57:44.000Z",
+      "stale": true,
+      "unprocessedReason": "push notification for grok-0009 was not delivered after 3 attempts (worker responded 401)",
+      "activeWarningIds": []
+    }
+  ],
+  "warnings": [
+    {
+      "id": "warn-4",
+      "pair": ["claude-0007", "codex-0008"],
+      "headsAtIssue": {
+        "claude-0007": "e4f5061a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d70",
+        "codex-0008": "f5a6072b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e80"
+      },
+      "reason": "textual conflict: both agents changed prototype/src/payments/index.ts",
+      "status": "active",
+      "createdAt": "2026-10-03T15:00:12.000Z",
+      "invalidatedAt": null,
+      "acks": [
+        {
+          "agent": "claude-0007",
+          "head": "e4f5061a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d70",
+          "note": "Taking codex-0008's config change first, then re-splitting payments on top.",
+          "at": "2026-10-03T15:01:47.000Z"
+        }
+      ]
+    },
+    {
+      "id": "warn-5",
+      "pair": ["codex-0008", "grok-0009"],
+      "headsAtIssue": {
+        "codex-0008": "e5f60718a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7",
+        "grok-0009": "5a6b8c7d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b"
+      },
+      "reason": "textual conflict: both changed src/retry/config.ts",
+      "status": "invalidated",
+      "createdAt": "2026-10-03T14:46:20.000Z",
+      "invalidatedAt": "2026-10-03T14:52:50.000Z",
+      "acks": [
+        {
+          "agent": "grok-0009",
+          "head": "5a6b8c7d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b",
+          "note": "Rewriting my change to leave the shared config alone.",
+          "at": "2026-10-03T14:47:33.000Z"
+        }
+      ]
+    }
+  ],
+  "radarLog": [
+    {
+      "at": "2026-10-03T15:00:12.000Z",
+      "pair": ["claude-0007", "codex-0008"],
+      "heads": {
+        "a": "e4f5061a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d70",
+        "b": "f5a6072b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e80"
+      },
+      "reason": "textual conflict: both agents changed prototype/src/payments/index.ts"
+    },
+    {
+      "at": "2026-10-03T14:59:41.000Z",
+      "pair": ["claude-0007", "grok-0009"],
+      "heads": {
+        "a": "e4f5061a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d70",
+        "b": "6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b"
+      },
+      "reason": null
+    },
+    {
+      "at": "2026-10-03T14:57:44.000Z",
+      "pair": ["codex-0008", "grok-0009"],
+      "heads": {
+        "a": "f5a6072b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e80",
+        "b": "6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b"
+      },
+      "reason": null
+    },
+    {
+      "at": "2026-10-03T14:46:20.000Z",
+      "pair": ["codex-0008", "grok-0009"],
+      "heads": {
+        "a": "e5f60718a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7",
+        "b": "5a6b8c7d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b"
+      },
+      "reason": "textual conflict: both changed src/retry/config.ts"
+    }
+  ],
+  "lastRunnerReport": null,
+  "unprocessedPushes": [
+    {
+      "repo": "agent-branches-canonical-grok-0009",
+      "ref": "refs/heads/main",
+      "sha": "7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c",
+      "before": "6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b",
+      "attempts": 3,
+      "firstAt": "2026-10-03T15:02:11.000Z",
+      "lastAt": "2026-10-03T15:02:12.000Z",
+      "lastError": "worker responded 401",
+      "agentId": "grok-0009"
+    }
+  ]
+}

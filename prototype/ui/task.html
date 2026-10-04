@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Change story</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="wrap">
+    <header class="page">
+      <p class="small"><a href="index.html" id="back">← All agent changes</a></p>
+      <h1>Change story</h1>
+      <p class="lede">
+        Everything one agent did on its task: what it set out to do, every change
+        it pushed, the warnings it received, and whether its tests really ran.
+      </p>
+      <p id="demo-banner" class="banner demo" hidden>
+        Demo mode — this page shows sample data from <code>fixtures/</code>, not a live server.
+      </p>
+      <p id="error" class="banner error" hidden></p>
+      <p id="status-error" class="banner error" role="alert" hidden></p>
+      <p id="live" class="small muted" role="status" aria-live="polite"></p>
+    </header>
+
+    <main id="main">
+      <p id="loading" aria-live="polite" class="muted">Loading…</p>
+
+      <div class="task-head" id="task-head"></div>
+
+      <h2>Timeline</h2>
+      <p class="muted small">One compact strip for this agent: pushes, warnings received, and warnings it acknowledged.</p>
+      <div id="timeline" class="timeline-wrap"></div>
+
+      <h2>The changes, in order</h2>
+      <p class="muted small">Each entry is one push the agent made to its own copy, oldest first.</p>
+      <div id="changes"></div>
+
+      <h2>Warnings this agent received</h2>
+      <div id="warnings"></div>
+
+      <h2>Did the tests really run?</h2>
+      <p class="muted small">
+        A change only counts as safe when a test run is recorded for that exact
+        change and it passed. If that is missing, this stays unknown — never safe.
+      </p>
+      <div id="evidence"></div>
+
+      <h2>Your review decision</h2>
+      <div class="review" id="review"></div>
+    </main>
+
+    <footer class="page">
+      <p>Agent Branches review screen — static HTML, no frameworks. Data: <code>GET /tasks/:id</code> and <code>GET /status</code>.</p>
+    </footer>
+  </div>
+  <noscript><p class="banner error">This page needs JavaScript to load the task data.</p></noscript>
+  <script>
+    (function () {
+      var p = new URLSearchParams(window.location.search);
+      var back = document.getElementById("back");
+      var fx = p.get("fixture");
+      back.setAttribute("href", "index.html" + (fx ? "?fixture=" + encodeURIComponent(fx) : ""));
+    })();
+  </script>
+  <script src="pair-status.js"></script>
+  <script src="view-logic.js"></script>
+  <script src="request-guard.js"></script>
+  <script src="ui.js"></script>
+  <script>AgentBranchesUI.bootTask();</script>
+</body>
+</html>

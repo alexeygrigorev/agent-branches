@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ESNext"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "strict": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "types": [],
+    "noEmit": false,
+    "outDir": ".build/node",
+    "rootDir": "."
+  },
+  "include": [
+    "types/node-web.d.ts",
+    "src/ports/**/*.ts",
+    "src/core/**/*.ts",
+    "src/local/**/*.ts",
+    "src/radar.ts",
+    "src/checks-wire.ts",
+    "test/node/**/*.ts"
+  ]
+}

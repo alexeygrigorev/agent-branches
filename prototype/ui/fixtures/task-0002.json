@@ -1,0 +1,39 @@
+{
+  "taskId": "task-0002",
+  "agentId": "codex-0002",
+  "forkName": "agent-branches-canonical-codex-0002",
+  "forkRemote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical-codex-0002.git",
+  "ref": "refs/heads/main",
+  "createdAt": "2026-10-03T12:42:35.000Z",
+  "agent": {
+    "agentId": "codex-0002",
+    "taskId": "task-0002",
+    "forkName": "agent-branches-canonical-codex-0002",
+    "forkRemote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical-codex-0002.git",
+    "ref": "refs/heads/main",
+    "intent": "Move auth checks into their own middleware file",
+    "baseSha": "9af31c42be07d5e6a1b3c8820f47c9de11a6b302",
+    "head": "c8d94e13f6a2507bc39e0d1a4f82b6c05d7e93af",
+    "pushes": 2,
+    "createdAt": "2026-10-03T12:42:35.000Z",
+    "lastPushAt": "2026-10-03T13:19:21.000Z",
+    "pushLog": [
+      {
+        "sha": "e05b7d29c14f8a3b6d0e7c25f19a3b8d4c5e6f70",
+        "at": "2026-10-03T13:02:14.000Z",
+        "message": "wip: extract authMiddleware from index"
+      },
+      {
+        "sha": "c8d94e13f6a2507bc39e0d1a4f82b6c05d7e93af",
+        "at": "2026-10-03T13:19:21.000Z",
+        "message": "wip: route /tasks through the middleware"
+      }
+    ],
+    "testEvidence": {
+      "command": "npm test",
+      "exitCode": 0,
+      "head": "c8d94e13f6a2507bc39e0d1a4f82b6c05d7e93af",
+      "at": "2026-10-03T13:21:03.000Z"
+    }
+  }
+}

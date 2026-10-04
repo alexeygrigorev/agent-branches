@@ -1,0 +1,43 @@
+{
+  "taskId": "task-s2",
+  "agentId": "codex-0005",
+  "forkName": "agent-branches-canonical-codex-0005",
+  "forkRemote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical-codex-0005.git",
+  "ref": "refs/heads/main",
+  "createdAt": "2026-10-03T14:03:27.000Z",
+  "base_sha": "9af31c42be07d5e6a1b3c8820f47c9de11a6b302",
+  "intent": "Rewrite the same auth helper with a new signature",
+  "head": "c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1",
+  "pushes": 2,
+  "agent": {
+    "agentId": "codex-0005",
+    "taskId": "task-s2",
+    "forkName": "agent-branches-canonical-codex-0005",
+    "forkRemote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical-codex-0005.git",
+    "ref": "refs/heads/main",
+    "intent": "Rewrite the same auth helper with a new signature",
+    "baseSha": "9af31c42be07d5e6a1b3c8820f47c9de11a6b302",
+    "head": "c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1",
+    "pushes": 2,
+    "createdAt": "2026-10-03T14:03:27.000Z",
+    "lastPushAt": "2026-10-03T14:22:58.000Z",
+    "pushLog": [
+      {
+        "sha": "b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1",
+        "at": "2026-10-03T14:12:19.000Z",
+        "message": "wip: new helper signature"
+      },
+      {
+        "sha": "c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1",
+        "at": "2026-10-03T14:22:58.000Z",
+        "message": "wip: adapt tests to the new signature"
+      }
+    ],
+    "testEvidence": {
+      "command": "npm test",
+      "exitCode": 0,
+      "head": "c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1",
+      "at": "2026-10-03T14:23:41.000Z"
+    }
+  }
+}

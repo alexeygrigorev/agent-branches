@@ -1,0 +1,74 @@
+{
+  "taskId": "task-0009",
+  "agentId": "grok-0009",
+  "forkName": "agent-branches-canonical-grok-0009",
+  "forkRemote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical-grok-0009.git",
+  "ref": "refs/heads/main",
+  "createdAt": "2026-10-03T14:35:15.000Z",
+  "base_sha": "9af31c42be07d5e6a1b3c8820f47c9de11a6b302",
+  "intent": "Fix the flaky retry test",
+  "head": "6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b",
+  "pushes": 2,
+  "agent": {
+    "agentId": "grok-0009",
+    "taskId": "task-0009",
+    "forkName": "agent-branches-canonical-grok-0009",
+    "forkRemote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical-grok-0009.git",
+    "ref": "refs/heads/main",
+    "intent": "Fix the flaky retry test",
+    "baseSha": "9af31c42be07d5e6a1b3c8820f47c9de11a6b302",
+    "head": "6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b",
+    "pushes": 2,
+    "createdAt": "2026-10-03T14:35:15.000Z",
+    "lastPushAt": "2026-10-03T14:52:44.000Z",
+    "pushLog": [
+      {
+        "sha": "5a6b8c7d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b",
+        "at": "2026-10-03T14:44:52.000Z",
+        "message": "wip: retry test backoff"
+      },
+      {
+        "sha": "6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b",
+        "at": "2026-10-03T14:52:44.000Z",
+        "message": "wip: retry fix scoped to the test only"
+      }
+    ],
+    "testEvidence": {
+      "command": "npm test",
+      "exitCode": 0,
+      "head": "6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b",
+      "at": "2026-10-03T14:53:38.000Z"
+    }
+  },
+  "warnings": [
+    {
+      "id": "warn-5",
+      "pair": [
+        "codex-0008",
+        "grok-0009"
+      ],
+      "headsAtIssue": {
+        "codex-0008": "e5f60718a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7",
+        "grok-0009": "5a6b8c7d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b"
+      },
+      "reason": "textual conflict: both changed src/retry/config.ts",
+      "status": "invalidated",
+      "createdAt": "2026-10-03T14:46:20.000Z",
+      "invalidatedAt": "2026-10-03T14:52:50.000Z",
+      "acks": [
+        {
+          "agent": "grok-0009",
+          "head": "5a6b8c7d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b",
+          "note": "Rewriting my change to leave the shared config alone.",
+          "at": "2026-10-03T14:47:33.000Z"
+        }
+      ]
+    }
+  ],
+  "testProvenance": {
+    "command": "npm test",
+    "exit": 0,
+    "head_sha": "6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b",
+    "at": "2026-10-03T14:53:38.000Z"
+  }
+}

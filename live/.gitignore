@@ -1,0 +1,6 @@
+artifacts/
+work/
+state/
+*.log
+.dev.vars
+__pycache__/

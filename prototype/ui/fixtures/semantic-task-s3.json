@@ -1,0 +1,38 @@
+{
+  "taskId": "task-s3",
+  "agentId": "grok-0006",
+  "forkName": "agent-branches-canonical-grok-0006",
+  "forkRemote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical-grok-0006.git",
+  "ref": "refs/heads/main",
+  "createdAt": "2026-10-03T14:05:03.000Z",
+  "base_sha": "9af31c42be07d5e6a1b3c8820f47c9de11a6b302",
+  "intent": "Document the auth helper in the README",
+  "head": "d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2",
+  "pushes": 1,
+  "agent": {
+    "agentId": "grok-0006",
+    "taskId": "task-s3",
+    "forkName": "agent-branches-canonical-grok-0006",
+    "forkRemote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical-grok-0006.git",
+    "ref": "refs/heads/main",
+    "intent": "Document the auth helper in the README",
+    "baseSha": "9af31c42be07d5e6a1b3c8820f47c9de11a6b302",
+    "head": "d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2",
+    "pushes": 1,
+    "createdAt": "2026-10-03T14:05:03.000Z",
+    "lastPushAt": "2026-10-03T14:18:12.000Z",
+    "pushLog": [
+      {
+        "sha": "d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2",
+        "at": "2026-10-03T14:18:12.000Z",
+        "message": "wip: auth helper docs"
+      }
+    ],
+    "testEvidence": {
+      "command": "npm test",
+      "exitCode": 0,
+      "head": "d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2",
+      "at": "2026-10-03T14:19:05.000Z"
+    }
+  }
+}

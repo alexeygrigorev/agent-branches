@@ -1,0 +1,43 @@
+{
+  "taskId": "task-s1",
+  "agentId": "claude-0004",
+  "forkName": "agent-branches-canonical-claude-0004",
+  "forkRemote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical-claude-0004.git",
+  "ref": "refs/heads/main",
+  "createdAt": "2026-10-03T14:02:11.000Z",
+  "base_sha": "9af31c42be07d5e6a1b3c8820f47c9de11a6b302",
+  "intent": "Rename the shared auth helper and update its callers",
+  "head": "b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0",
+  "pushes": 2,
+  "agent": {
+    "agentId": "claude-0004",
+    "taskId": "task-s1",
+    "forkName": "agent-branches-canonical-claude-0004",
+    "forkRemote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical-claude-0004.git",
+    "ref": "refs/heads/main",
+    "intent": "Rename the shared auth helper and update its callers",
+    "baseSha": "9af31c42be07d5e6a1b3c8820f47c9de11a6b302",
+    "head": "b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0",
+    "pushes": 2,
+    "createdAt": "2026-10-03T14:02:11.000Z",
+    "lastPushAt": "2026-10-03T14:20:44.000Z",
+    "pushLog": [
+      {
+        "sha": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0",
+        "at": "2026-10-03T14:10:02.000Z",
+        "message": "wip: rename auth helper"
+      },
+      {
+        "sha": "b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0",
+        "at": "2026-10-03T14:20:44.000Z",
+        "message": "wip: update callers and tests"
+      }
+    ],
+    "testEvidence": {
+      "command": "npm test",
+      "exitCode": 0,
+      "head": "b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0",
+      "at": "2026-10-03T14:21:30.000Z"
+    }
+  }
+}

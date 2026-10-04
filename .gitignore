@@ -2,3 +2,16 @@
 __pycache__/
 node_modules/
 .env
+.env.*
+!.env.example
+.wrangler/
+.build/
+*.log
+live/.dev.vars
+live/work/
+live/state/
+live/artifacts/
+live/evidence/
+prototype/.dev.vars
+prototype/.sidecar/
+*.pyc

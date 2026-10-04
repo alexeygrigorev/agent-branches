@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent Branches — all agent changes</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="wrap">
+    <header class="page">
+      <h1>Agent changes</h1>
+      <p class="lede">
+        Several coding agents change the same project at the same time. Each one
+        works in its own copy. This page shows what every agent is doing and
+        whether their changes are known to be safe together.
+      </p>
+      <p id="demo-banner" class="banner demo" hidden>
+        Demo mode — this page shows sample data from the <code>fixtures/</code> folder, not a live server.
+      </p>
+      <p id="error" class="banner error" hidden></p>
+      <p id="status-error" class="banner error" role="alert" hidden></p>
+      <p id="live" class="small muted" role="status" aria-live="polite"></p>
+    </header>
+
+    <main id="main">
+      <p id="loading" aria-live="polite" class="muted">Loading…</p>
+
+      <p id="canonical" class="small"></p>
+
+      <h2>What each agent is doing</h2>
+      <div id="agents"></div>
+
+      <h2>Are these changes safe together?</h2>
+      <p class="muted small">
+        Every pair of agents is compared at their latest changes. “Safe” is only
+        shown when the radar checked these two changes <em>together</em> at their
+        latest versions and its combined test run actually collected and ran
+        tests — otherwise the pair stays “unknown”, which means
+        <strong>not safe</strong>, or “not checked”. Each agent’s own passing
+        tests never make a pair safe.
+      </p>
+      <div id="pairs"></div>
+
+      <section id="lost-section" hidden>
+        <h2>Pushes that never arrived</h2>
+        <p class="muted small">
+          The server was told about a push but could not record it. Until it can,
+          that agent&rsquo;s true latest change is <strong>unknown</strong>: every pair
+          involving the agent stays &ldquo;not checked&rdquo; and is never shown safe.
+        </p>
+        <div id="lost-list"></div>
+      </section>
+
+      <section id="warnings-section">
+        <h2>Warnings sent</h2>
+        <div class="table-wrap">
+          <table>
+            <caption class="small muted" style="text-align:left">
+              Conflicts found between agents, newest first. A warning “goes away”
+              when one of the agents pushes a newer change.
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Warning</th>
+                <th scope="col">Between</th>
+                <th scope="col">What happened</th>
+                <th scope="col">Sent</th>
+                <th scope="col">State</th>
+                <th scope="col">Acknowledgement</th>
+              </tr>
+            </thead>
+            <tbody id="warnings-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <h2>What the labels mean</h2>
+      <ul class="legend">
+        <li><span class="badge conflict">Conflict</span> The radar tried these changes together and they clash. Someone needs to look.</li>
+        <li><span class="badge clean">Clean — tests ran</span> The radar combined both changes at their latest versions, ran the combined tests, and found no clash.</li>
+        <li><span class="badge unknown">Unknown — not safe</span> The radar checked the pair but could not prove it safe. Do not rely on it.</li>
+        <li><span class="badge not_checked">Not checked</span> These changes have not been compared at their latest versions yet — or the comparison found no clash but never ran combined tests.</li>
+      </ul>
+    </main>
+
+    <footer class="page">
+      <p>Agent Branches review screen — static HTML, no frameworks. Data: <code>GET /status</code>.</p>
+    </footer>
+  </div>
+  <noscript><p class="banner error">This page needs JavaScript to load the agent data.</p></noscript>
+  <script src="pair-status.js"></script>
+  <script src="view-logic.js"></script>
+  <script src="request-guard.js"></script>
+  <script src="ui.js"></script>
+  <script>AgentBranchesUI.bootIndex();</script>
+</body>
+</html>

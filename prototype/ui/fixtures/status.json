@@ -1,0 +1,235 @@
+{
+  "canonical": {
+    "name": "agent-branches-canonical",
+    "remote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical.git"
+  },
+  "agents": [
+    {
+      "agentId": "claude-0001",
+      "taskId": "task-0001",
+      "forkName": "agent-branches-canonical-claude-0001",
+      "forkRemote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical-claude-0001.git",
+      "ref": "refs/heads/main",
+      "intent": "Add rate limiting to the checkout worker",
+      "baseSha": "9af31c42be07d5e6a1b3c8820f47c9de11a6b302",
+      "head": "a6c55b2e91d40f83c7a1b0de5537c8f21a9c44d3",
+      "pushes": 3,
+      "createdAt": "2026-10-03T12:41:10.000Z",
+      "lastPushAt": "2026-10-03T13:24:52.000Z",
+      "pushLog": [
+        {
+          "sha": "3d9c1ab77e0c45b2fa19d8cc04e6275fa3b11830",
+          "at": "2026-10-03T12:58:03.000Z",
+          "message": "wip: rate limiter skeleton with token bucket"
+        },
+        {
+          "sha": "7e21f0c4a9b8d3e5f6012c7a4b8d9e0f1a2b3c4d",
+          "at": "2026-10-03T13:11:47.000Z",
+          "message": "wip: per-IP limits behind a setting"
+        },
+        {
+          "sha": "a6c55b2e91d40f83c7a1b0de5537c8f21a9c44d3",
+          "at": "2026-10-03T13:24:52.000Z",
+          "message": "wip: tests for the limiter"
+        }
+      ],
+      "testEvidence": {
+        "command": "npm test",
+        "exitCode": 0,
+        "head": "7e21f0c4a9b8d3e5f6012c7a4b8d9e0f1a2b3c4d",
+        "at": "2026-10-03T13:15:05.000Z"
+      }
+    },
+    {
+      "agentId": "codex-0002",
+      "taskId": "task-0002",
+      "forkName": "agent-branches-canonical-codex-0002",
+      "forkRemote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical-codex-0002.git",
+      "ref": "refs/heads/main",
+      "intent": "Move auth checks into their own middleware file",
+      "baseSha": "9af31c42be07d5e6a1b3c8820f47c9de11a6b302",
+      "head": "c8d94e13f6a2507bc39e0d1a4f82b6c05d7e93af",
+      "pushes": 2,
+      "createdAt": "2026-10-03T12:42:35.000Z",
+      "lastPushAt": "2026-10-03T13:19:21.000Z",
+      "pushLog": [
+        {
+          "sha": "e05b7d29c14f8a3b6d0e7c25f19a3b8d4c5e6f70",
+          "at": "2026-10-03T13:02:14.000Z",
+          "message": "wip: extract authMiddleware from index"
+        },
+        {
+          "sha": "c8d94e13f6a2507bc39e0d1a4f82b6c05d7e93af",
+          "at": "2026-10-03T13:19:21.000Z",
+          "message": "wip: route /tasks through the middleware"
+        }
+      ],
+      "testEvidence": {
+        "command": "npm test",
+        "exitCode": 0,
+        "head": "c8d94e13f6a2507bc39e0d1a4f82b6c05d7e93af",
+        "at": "2026-10-03T13:21:03.000Z"
+      }
+    },
+    {
+      "agentId": "grok-0003",
+      "taskId": "task-0003",
+      "forkName": "agent-branches-canonical-grok-0003",
+      "forkRemote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical-grok-0003.git",
+      "ref": "refs/heads/main",
+      "intent": "Update the quickstart guide in the README",
+      "baseSha": "9af31c42be07d5e6a1b3c8820f47c9de11a6b302",
+      "head": "5b7a3f0d2c8e61a4b9d0f3c7e2a5b8d1c4f60792",
+      "pushes": 1,
+      "createdAt": "2026-10-03T12:44:58.000Z",
+      "lastPushAt": "2026-10-03T13:31:40.000Z",
+      "pushLog": [
+        {
+          "sha": "5b7a3f0d2c8e61a4b9d0f3c7e2a5b8d1c4f60792",
+          "at": "2026-10-03T13:31:40.000Z",
+          "message": "wip: quickstart steps for local dev"
+        }
+      ],
+      "testEvidence": {
+        "command": "npm test",
+        "exitCode": 0,
+        "head": "5b7a3f0d2c8e61a4b9d0f3c7e2a5b8d1c4f60792",
+        "at": "2026-10-03T13:33:12.000Z"
+      }
+    }
+  ],
+  "heads": {
+    "claude-0001": "a6c55b2e91d40f83c7a1b0de5537c8f21a9c44d3",
+    "codex-0002": "c8d94e13f6a2507bc39e0d1a4f82b6c05d7e93af",
+    "grok-0003": "5b7a3f0d2c8e61a4b9d0f3c7e2a5b8d1c4f60792"
+  },
+  "pairs": [
+    {
+      "pair": ["claude-0001", "codex-0002"],
+      "heads": {
+        "claude-0001": "a6c55b2e91d40f83c7a1b0de5537c8f21a9c44d3",
+        "codex-0002": "c8d94e13f6a2507bc39e0d1a4f82b6c05d7e93af"
+      },
+      "status": "conflict",
+      "kind": "textual",
+      "evidence": "both agents changed prototype/src/index.ts",
+      "checkedAt": "2026-10-03T13:24:55.000Z",
+      "stale": false,
+      "activeWarningIds": ["warn-2"]
+    },
+    {
+      "pair": ["claude-0001", "grok-0003"],
+      "heads": {
+        "claude-0001": "a6c55b2e91d40f83c7a1b0de5537c8f21a9c44d3",
+        "grok-0003": "5b7a3f0d2c8e61a4b9d0f3c7e2a5b8d1c4f60792"
+      },
+      "status": "clean",
+      "kind": "test",
+      "evidence": "merge-tree clean; combined test run passed",
+      "coverage": { "tests_collected": 3, "tests_failed": 0 },
+      "checkedAt": "2026-10-03T13:31:41.000Z",
+      "stale": false,
+      "activeWarningIds": []
+    },
+    {
+      "pair": ["codex-0002", "grok-0003"],
+      "heads": {
+        "codex-0002": "c8d94e13f6a2507bc39e0d1a4f82b6c05d7e93af",
+        "grok-0003": "5b7a3f0d2c8e61a4b9d0f3c7e2a5b8d1c4f60792"
+      },
+      "status": "clean",
+      "evidence": "merge-tree clean; no combined tests were run for these disjoint changes",
+      "checkedAt": "2026-10-03T13:31:42.000Z",
+      "stale": false,
+      "activeWarningIds": []
+    }
+  ],
+  "warnings": [
+    {
+      "id": "warn-2",
+      "pair": ["claude-0001", "codex-0002"],
+      "headsAtIssue": {
+        "a": "a6c55b2e91d40f83c7a1b0de5537c8f21a9c44d3",
+        "b": "c8d94e13f6a2507bc39e0d1a4f82b6c05d7e93af"
+      },
+      "reason": "textual conflict: both agents changed prototype/src/index.ts",
+      "status": "active",
+      "createdAt": "2026-10-03T13:24:55.000Z",
+      "invalidatedAt": null,
+      "acks": [
+        {
+          "agent": "claude-0001",
+          "head": "a6c55b2e91d40f83c7a1b0de5537c8f21a9c44d3",
+          "note": "Rebasing onto codex-0002's middleware change; a fixed push is coming.",
+          "at": "2026-10-03T13:27:02.000Z"
+        }
+      ]
+    },
+    {
+      "id": "warn-1",
+      "pair": ["claude-0001", "codex-0002"],
+      "headsAtIssue": {
+        "a": "7e21f0c4a9b8d3e5f6012c7a4b8d9e0f1a2b3c4d",
+        "b": "e05b7d29c14f8a3b6d0e7c25f19a3b8d4c5e6f70"
+      },
+      "reason": "heads diverged while both agents were editing the checkout flow",
+      "status": "invalidated",
+      "createdAt": "2026-10-03T13:12:00.000Z",
+      "invalidatedAt": "2026-10-03T13:19:24.000Z",
+      "acks": [
+        {
+          "agent": "claude-0001",
+          "head": "7e21f0c4a9b8d3e5f6012c7a4b8d9e0f1a2b3c4d",
+          "note": "Pausing checkout work until this settles.",
+          "at": "2026-10-03T13:13:30.000Z"
+        },
+        {
+          "agent": "codex-0002",
+          "head": "e05b7d29c14f8a3b6d0e7c25f19a3b8d4c5e6f70",
+          "note": "Same on my side — holding the middleware move.",
+          "at": "2026-10-03T13:14:05.000Z"
+        }
+      ]
+    }
+  ],
+  "radarLog": [
+    {
+      "at": "2026-10-03T13:31:41.000Z",
+      "pair": ["claude-0001", "grok-0003"],
+      "heads": {
+        "a": "a6c55b2e91d40f83c7a1b0de5537c8f21a9c44d3",
+        "b": "5b7a3f0d2c8e61a4b9d0f3c7e2a5b8d1c4f60792"
+      },
+      "reason": null
+    },
+    {
+      "at": "2026-10-03T13:24:55.000Z",
+      "pair": ["claude-0001", "codex-0002"],
+      "heads": {
+        "a": "a6c55b2e91d40f83c7a1b0de5537c8f21a9c44d3",
+        "b": "c8d94e13f6a2507bc39e0d1a4f82b6c05d7e93af"
+      },
+      "reason": "textual conflict: both agents changed prototype/src/index.ts"
+    },
+    {
+      "at": "2026-10-03T13:31:42.000Z",
+      "pair": ["codex-0002", "grok-0003"],
+      "heads": {
+        "a": "c8d94e13f6a2507bc39e0d1a4f82b6c05d7e93af",
+        "b": "5b7a3f0d2c8e61a4b9d0f3c7e2a5b8d1c4f60792"
+      },
+      "reason": null
+    },
+    {
+      "at": "2026-10-03T13:19:24.000Z",
+      "pair": ["codex-0002", "grok-0003"],
+      "heads": {
+        "a": "c8d94e13f6a2507bc39e0d1a4f82b6c05d7e93af",
+        "b": "4411e29a7c3b5d8f0a6e1c4b7d2a9f3e5c8b1d64"
+      },
+      "reason": null
+    }
+  ],
+  "lastRunnerReport": null,
+  "unprocessedPushes": []
+}

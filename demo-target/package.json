@@ -1,0 +1,11 @@
+{
+  "name": "shortlinks-demo-target",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Tiny shortlinks service in Cloudflare Worker style. Zero dependencies; tests run with node --test. Canonical demo repo for the Agent Branches demo.",
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,44 @@
+{
+  "taskId": "task-0001",
+  "agentId": "claude-0001",
+  "forkName": "agent-branches-canonical-claude-0001",
+  "forkRemote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical-claude-0001.git",
+  "ref": "refs/heads/main",
+  "createdAt": "2026-10-03T12:41:10.000Z",
+  "agent": {
+    "agentId": "claude-0001",
+    "taskId": "task-0001",
+    "forkName": "agent-branches-canonical-claude-0001",
+    "forkRemote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical-claude-0001.git",
+    "ref": "refs/heads/main",
+    "intent": "Add rate limiting to the checkout worker",
+    "baseSha": "9af31c42be07d5e6a1b3c8820f47c9de11a6b302",
+    "head": "a6c55b2e91d40f83c7a1b0de5537c8f21a9c44d3",
+    "pushes": 3,
+    "createdAt": "2026-10-03T12:41:10.000Z",
+    "lastPushAt": "2026-10-03T13:24:52.000Z",
+    "pushLog": [
+      {
+        "sha": "3d9c1ab77e0c45b2fa19d8cc04e6275fa3b11830",
+        "at": "2026-10-03T12:58:03.000Z",
+        "message": "wip: rate limiter skeleton with token bucket"
+      },
+      {
+        "sha": "7e21f0c4a9b8d3e5f6012c7a4b8d9e0f1a2b3c4d",
+        "at": "2026-10-03T13:11:47.000Z",
+        "message": "wip: per-IP limits behind a setting"
+      },
+      {
+        "sha": "a6c55b2e91d40f83c7a1b0de5537c8f21a9c44d3",
+        "at": "2026-10-03T13:24:52.000Z",
+        "message": "wip: tests for the limiter"
+      }
+    ],
+    "testEvidence": {
+      "command": "npm test",
+      "exitCode": 0,
+      "head": "7e21f0c4a9b8d3e5f6012c7a4b8d9e0f1a2b3c4d",
+      "at": "2026-10-03T13:15:05.000Z"
+    }
+  }
+}

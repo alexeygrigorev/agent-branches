@@ -1,0 +1,10 @@
+{
+  "name": "agent-branches-review-ui",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Static review UI — plain HTML/CSS/vanilla JS, no dependencies. type=commonjs so `node --test` loads pair-status.js as CommonJS; browsers are unaffected.",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test"
+  }
+}

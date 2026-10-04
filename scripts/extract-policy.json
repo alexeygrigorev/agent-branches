@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "source_repo": "/home/alexey/git/agent-branches-integration",
+  "source_remote": "git@github.com:alexeygrigorev/cloudflare-agent-git.git",
+  "include_exact": [
+    "LICENSE",
+    "agent-branches"
+  ],
+  "include_prefixes": [
+    "agent_branches/",
+    "radar/",
+    "prototype/",
+    "demo-target/"
+  ],
+  "include_files": [
+    "tests/mock_l1_server.py",
+    "tests/test_client.py",
+    "tests/test_admission.py",
+    "tests/test_radar_engine.py",
+    "live/.gitignore",
+    "live/README.md",
+    "live/assertions.py",
+    "live/check-ui-pairs.cjs",
+    "live/run-demo.sh",
+    "live/sidecar.mjs"
+  ],
+  "exclude_prefixes": [
+    "prototype/ui/ui-evidence/",
+    "demo-target/.harness/"
+  ],
+  "exclude_exact": [
+    "prototype/WORKLOG.md",
+    "prototype/WORKLOG-L4.md",
+    "prototype/docs-notes.md",
+    "demo-target/WORKLOG.md"
+  ],
+  "exclude_name_fragments": [
+    "node_modules",
+    "__pycache__",
+    "local-coordinator-state.json",
+    ".env"
+  ],
+  "never_copy_untracked": [
+    "prototype/local-coordinator-state.json",
+    "prototype/node_modules"
+  ],
+  "notes": "Product-only extraction from the pinned integration tree. Experiment research/coordination/website/scripts/metrics, live evidence, UI screenshots, and untracked local state are excluded."
+}

@@ -1,0 +1,34 @@
+{
+  "taskId": "task-0003",
+  "agentId": "grok-0003",
+  "forkName": "agent-branches-canonical-grok-0003",
+  "forkRemote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical-grok-0003.git",
+  "ref": "refs/heads/main",
+  "createdAt": "2026-10-03T12:44:58.000Z",
+  "agent": {
+    "agentId": "grok-0003",
+    "taskId": "task-0003",
+    "forkName": "agent-branches-canonical-grok-0003",
+    "forkRemote": "https://local.artifacts-stub.test/git/agent-branches-local/agent-branches-canonical-grok-0003.git",
+    "ref": "refs/heads/main",
+    "intent": "Update the quickstart guide in the README",
+    "baseSha": "9af31c42be07d5e6a1b3c8820f47c9de11a6b302",
+    "head": "5b7a3f0d2c8e61a4b9d0f3c7e2a5b8d1c4f60792",
+    "pushes": 1,
+    "createdAt": "2026-10-03T12:44:58.000Z",
+    "lastPushAt": "2026-10-03T13:31:40.000Z",
+    "pushLog": [
+      {
+        "sha": "5b7a3f0d2c8e61a4b9d0f3c7e2a5b8d1c4f60792",
+        "at": "2026-10-03T13:31:40.000Z",
+        "message": "wip: quickstart steps for local dev"
+      }
+    ],
+    "testEvidence": {
+      "command": "npm test",
+      "exitCode": 0,
+      "head": "5b7a3f0d2c8e61a4b9d0f3c7e2a5b8d1c4f60792",
+      "at": "2026-10-03T13:33:12.000Z"
+    }
+  }
+}
