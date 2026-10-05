@@ -711,6 +711,19 @@ def handle_sync_git(args: argparse.Namespace, as_json: bool) -> int:
                 print(f"  Commit: {res.get('head_sha')}")
                 print(f"  Remote SHA: {res.get('remote_sha')} (verified: {res.get('verified')})")
                 print(f"  Files: {len(res.get('staged_files', []))} committed")
+                return 0
+            elif status == "unpushed_checkpoint":
+                print(f"[UNPUSHED CHECKPOINT] {res.get('message')}")
+                print(f"  Branch: {res.get('branch')}")
+                print(f"  Commit: {res.get('head_sha')}")
+                print(f"  Error: {res.get('error')}")
+                return 1
+            elif status == "push_unverified":
+                print(f"[PUSH UNVERIFIED] {res.get('message')}")
+                print(f"  Branch: {res.get('branch')}")
+                print(f"  Commit: {res.get('head_sha')}")
+                print(f"  Remote SHA: {res.get('remote_sha')}")
+                return 1
         return 0
     except SyncGitError as e:
         if as_json:
