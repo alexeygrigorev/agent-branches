@@ -15,3 +15,5 @@ live/evidence/
 prototype/.dev.vars
 prototype/.sidecar/
 *.pyc
+*.jsonl
+*.telemetry
