@@ -380,6 +380,16 @@ def build_parser() -> argparse.ArgumentParser:
     checks_parser.add_argument("--server", help="Coordinator URL")
     checks_parser.add_argument("--json", action="store_true", help="Output raw JSON")
 
+    # sync command
+    sync_parser = subparsers.add_parser("sync", help="Synchronize working changes")
+    sync_sub = sync_parser.add_subparsers(dest="sync_action", help="Sync actions")
+    git_sync = sync_sub.add_parser("git", help="Sanitized checkpoint and push working changes to Git")
+    git_sync.add_argument("--message", "-m", help="Commit message for the checkpoint")
+    git_sync.add_argument("--preview", action="store_true", help="Preview changes without committing or pushing")
+    git_sync.add_argument("--remote", default="origin", help="Git remote name (default: origin)")
+    git_sync.add_argument("--repo-dir", default=".", help="Path to repository directory (default: current directory)")
+    git_sync.add_argument("--json", action="store_true", help="Output raw JSON")
+
     return parser
 
 
@@ -668,6 +678,48 @@ def handle_checks(args: argparse.Namespace, client: AgentBranchesClient, as_json
     return 0
 
 
+def handle_sync_git(args: argparse.Namespace, as_json: bool) -> int:
+    from agent_branches.sync_git import sync_git, SyncGitError
+    repo_dir = getattr(args, "repo_dir", ".") or "."
+    message = getattr(args, "message", None)
+    preview = bool(getattr(args, "preview", False))
+    remote = getattr(args, "remote", "origin") or "origin"
+
+    try:
+        res = sync_git(repo_dir=repo_dir, message=message, preview=preview, remote=remote)
+        if as_json:
+            print(json.dumps(res, indent=2))
+        else:
+            status = res.get("status")
+            if status == "preview":
+                print(f"[PREVIEW] Branch: {res.get('branch')}")
+                print(f"  To stage ({res.get('to_stage_count')} files):")
+                for f in res.get("modified_tracked", []):
+                    print(f"    modified: {f}")
+                for f in res.get("untracked_safe_to_add", []):
+                    print(f"    untracked safe: {f}")
+                if res.get("ignored_forbidden"):
+                    print("  Ignored private/sensitive:")
+                    for f in res.get("ignored_forbidden", []):
+                        print(f"    ignored: {f}")
+            elif status == "noop":
+                print(f"[NOOP] {res.get('message')}")
+                print(f"  Branch: {res.get('branch')} (HEAD: {res.get('head_sha')[:8]})")
+            elif status == "synced":
+                print(f"[SYNCED] Checkpoint committed and pushed successfully.")
+                print(f"  Branch: {res.get('branch')}")
+                print(f"  Commit: {res.get('head_sha')}")
+                print(f"  Remote SHA: {res.get('remote_sha')} (verified: {res.get('verified')})")
+                print(f"  Files: {len(res.get('staged_files', []))} committed")
+        return 0
+    except SyncGitError as e:
+        if as_json:
+            print(json.dumps({"error": str(e), "status": "failed"}, indent=2))
+        else:
+            print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     """Main CLI entrypoint."""
     parser = build_parser()
@@ -698,6 +750,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             return handle_ack(args, client, as_json)
         elif args.command == "checks":
             return handle_checks(args, client, as_json)
+        elif args.command == "sync":
+            if getattr(args, "sync_action", None) == "git":
+                return handle_sync_git(args, as_json)
+            else:
+                parser.parse_args(["sync", "--help"])
+                return 1
         else:
             parser.print_help()
             return 1
