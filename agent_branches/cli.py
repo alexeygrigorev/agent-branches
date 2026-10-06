@@ -456,6 +456,17 @@ def build_parser() -> argparse.ArgumentParser:
     roster_verify.add_argument("--proc-root", default="/proc", help="Root directory for /proc check (default: /proc)")
     roster_verify.add_argument("--json", action="store_true", help="Output raw JSON")
 
+    # history command (Bounded session history preservation)
+    history_parser = subparsers.add_parser("history", help="Bounded session history preservation")
+    history_sub = history_parser.add_subparsers(dest="history_action", help="History actions")
+
+    history_preserve = history_sub.add_parser("preserve", help="Preserve session history into bounded private archive")
+    history_preserve.add_argument("--session-id", required=True, help="Session identifier")
+    history_preserve.add_argument("--output-dir", required=True, help="Target output directory")
+    history_preserve.add_argument("--state-dir", help="Path to aplexer state directory (default: ~/.local/state/aplexer)")
+    history_preserve.add_argument("--max-bytes", type=int, default=50 * 1024 * 1024, help="Max budget in bytes (default: 50 MiB)")
+    history_preserve.add_argument("--json", action="store_true", help="Output raw JSON")
+
     return parser
 
 
@@ -1031,6 +1042,34 @@ def handle_roster_verify(args: argparse.Namespace, as_json: bool) -> int:
     return 0 if res.get("valid") else 1
 
 
+def handle_history_preserve(args: argparse.Namespace, as_json: bool) -> int:
+    from pathlib import Path
+    from agent_branches.history_preserve import preserve_session_history, HistoryPreservationError
+    try:
+        output_dir = Path(args.output_dir)
+        state_dir = Path(args.state_dir) if args.state_dir else None
+        res = preserve_session_history(
+            session_id=args.session_id,
+            output_dir=output_dir,
+            state_dir=state_dir,
+            max_bytes=args.max_bytes,
+        )
+        if as_json:
+            print(json.dumps(res, indent=2))
+        else:
+            print(f"[HISTORY PRESERVED] Session: {res.get('session_id')}")
+            print(f"  Archive Path: {res.get('archive_path')}")
+            print(f"  History Bytes: {res.get('history_bytes')}")
+            print(f"  Metadata: {res.get('meta_file')}")
+        return 0
+    except HistoryPreservationError as e:
+        if as_json:
+            print(json.dumps({"error": str(e), "status": "failed"}, indent=2))
+        else:
+            print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     """Main CLI entrypoint."""
     parser = build_parser()
@@ -1088,6 +1127,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return handle_roster_verify(args, as_json)
             else:
                 parser.parse_args(["roster", "--help"])
+                return 1
+        elif args.command == "history":
+            if getattr(args, "history_action", None) == "preserve":
+                return handle_history_preserve(args, as_json)
+            else:
+                parser.parse_args(["history", "--help"])
                 return 1
         else:
             parser.print_help()

@@ -97,3 +97,27 @@ def test_preserve_session_history_path_traversal_rejected():
 
         with pytest.raises(HistoryPreservationError):
             preserve_session_history("../malicious_session", output_dir)
+
+
+def test_cli_history_preserve_success():
+    from agent_branches.cli import main
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = pathlib.Path(tmp_dir)
+        state_dir = tmp_path / "aplexer"
+        output_dir = tmp_path / "archive"
+
+        session_id = "cli-test-session"
+        session_dir = state_dir / "sessions" / session_id
+        session_dir.mkdir(parents=True)
+        (session_dir / "history.bin").write_bytes(b"cli test buffer bytes")
+
+        rc = main([
+            "history", "preserve",
+            "--session-id", session_id,
+            "--output-dir", str(output_dir),
+            "--state-dir", str(state_dir),
+            "--json",
+        ])
+        assert rc == 0
+        assert (output_dir / session_id / "history.bin").exists()
+
