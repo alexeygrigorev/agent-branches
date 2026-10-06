@@ -698,9 +698,10 @@ def handle_sync_git(args: argparse.Namespace, as_json: bool) -> int:
                     print(f"    modified: {f}")
                 for f in res.get("untracked_safe_to_add", []):
                     print(f"    untracked safe: {f}")
-                if res.get("ignored_forbidden"):
+                ignored = res.get("ignored_forbidden") or res.get("forbidden_ignored") or []
+                if ignored:
                     print("  Ignored private/sensitive:")
-                    for f in res.get("ignored_forbidden", []):
+                    for f in ignored:
                         print(f"    ignored: {f}")
             elif status == "noop":
                 print(f"[NOOP] {res.get('message')}")

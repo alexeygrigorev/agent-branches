@@ -243,6 +243,7 @@ def sync_git(
                 "modified_tracked": modified,
                 "untracked_safe_to_add": untracked_safe,
                 "forbidden_ignored": untracked_forbidden,
+                "ignored_forbidden": untracked_forbidden,
                 "to_stage_count": len(to_stage),
             }
 
