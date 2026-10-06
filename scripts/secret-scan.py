@@ -18,6 +18,7 @@ PATTERNS = [
     ("slack_token", re.compile(rb"xox[baprs]-[A-Za-z0-9-]{10,}")),
     ("openai_sk", re.compile(rb"sk-[A-Za-z0-9]{20,}")),
     ("generic_bearer", re.compile(rb"(?i)authorization: bearer [A-Za-z0-9._=+/-]{24,}")),
+    ("raw_bus_token", re.compile(rb'"token":\s*"[0-9a-fA-F-]{20,}"')),
 ]
 
 FORBIDDEN_PATH_FRAGMENTS = (

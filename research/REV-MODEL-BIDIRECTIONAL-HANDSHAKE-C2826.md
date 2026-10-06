@@ -62,7 +62,7 @@ Inspection of `.local/bus/worker-t-bus-model-ack-c2826.cred.json`:
     "parent_id": null,
     "project_id": "agent-branches",
     "task_id": "t-bus-model-ack-c2826",
-    "token": "64a17e42-ac08-44ef-970a-5a3cf3489347"
+    "token": "[REDACTED-EPHEMERAL-TOKEN]"
   }
   ```
 - **Namespaced ID**: `hetzner-rmthz/agent-branches/branches-model-worker/-/t-bus-model-ack-c2826`
