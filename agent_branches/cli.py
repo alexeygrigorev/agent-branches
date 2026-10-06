@@ -402,6 +402,40 @@ def build_parser() -> argparse.ArgumentParser:
     )
     git_sync.add_argument("--json", action="store_true", help="Output raw JSON")
 
+    # bus command (AgentBus standalone worker transport)
+    bus_parser = subparsers.add_parser("bus", help="AgentBus standalone worker transport operations")
+    bus_sub = bus_parser.add_subparsers(dest="bus_action", help="Bus actions")
+
+    bus_enroll = bus_sub.add_parser("enroll", help="Enroll sessionless worker and persist 0600 credentials")
+    bus_enroll.add_argument("--bus-store", required=True, help="Path to bus directory store")
+    bus_enroll.add_argument("--task-id", required=True, help="Task identifier")
+    bus_enroll.add_argument("--cred-path", required=True, help="Destination path for 0600 credentials JSON")
+    bus_enroll.add_argument("--agent-name", default="branches-worker", help="Agent name (default: branches-worker)")
+    bus_enroll.add_argument("--device-id", default="hetzner-rmthz", help="Device ID (default: hetzner-rmthz)")
+    bus_enroll.add_argument("--project-id", default="agent-branches", help="Project ID (default: agent-branches)")
+    bus_enroll.add_argument("--json", action="store_true", help="Output raw JSON")
+
+    bus_send = bus_sub.add_parser("send", help="Send task result envelope using 0600 credentials")
+    bus_send.add_argument("--bus-store", required=True, help="Path to bus directory store")
+    bus_send.add_argument("--cred-path", required=True, help="Path to 0600 credentials JSON")
+    bus_send.add_argument("--recipient-id", required=True, help="Recipient identity ID")
+    bus_send.add_argument("--payload", required=True, help="Task result payload (string or JSON string)")
+    bus_send.add_argument("--kind", default="task_result", help="Envelope kind (default: task_result)")
+    bus_send.add_argument("--idempotency-key", help="Optional idempotency key")
+    bus_send.add_argument("--json", action="store_true", help="Output raw JSON")
+
+    bus_recv = bus_sub.add_parser("receive", help="Read unread messages using persistent cursor")
+    bus_recv.add_argument("--bus-store", required=True, help="Path to bus directory store")
+    bus_recv.add_argument("--cred-path", required=True, help="Path to 0600 credentials JSON")
+    bus_recv.add_argument("--json", action="store_true", help="Output raw JSON")
+
+    bus_await = bus_sub.add_parser("await-ack", help="Await coordinator task_ack envelope and record ReadAck")
+    bus_await.add_argument("--bus-store", required=True, help="Path to bus directory store")
+    bus_await.add_argument("--cred-path", required=True, help="Path to 0600 credentials JSON")
+    bus_await.add_argument("--expected-ack-for", required=True, help="Expected result message ID being acknowledged")
+    bus_await.add_argument("--timeout", type=float, default=30.0, help="Timeout in seconds (default: 30.0)")
+    bus_await.add_argument("--json", action="store_true", help="Output raw JSON")
+
     return parser
 
 
@@ -827,6 +861,91 @@ def handle_sync_git(args: argparse.Namespace, as_json: bool) -> int:
         else:
             print(f"Error: {e}", file=sys.stderr)
         return 1
+    except Exception as e:
+        if as_json:
+            print(json.dumps({"error": str(e), "status": "failed"}, indent=2))
+        else:
+            print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+def handle_bus_enroll(args: argparse.Namespace, as_json: bool) -> int:
+    from agent_branches.bus import enroll_worker_startup
+    res = enroll_worker_startup(
+        bus_store=args.bus_store,
+        task_id=args.task_id,
+        cred_path=args.cred_path,
+        agent_name=getattr(args, "agent_name", "branches-worker"),
+        device_id=getattr(args, "device_id", "hetzner-rmthz"),
+        project_id=getattr(args, "project_id", "agent-branches"),
+    )
+    if as_json:
+        print(json.dumps(res, indent=2))
+    else:
+        print(f"[BUS ENROLLED] Status: {res.get('status')} Identity: {res.get('namespaced_id')}")
+        print(f"  Credentials: {res.get('cred_file')}")
+    return 0
+
+
+def handle_bus_send(args: argparse.Namespace, as_json: bool) -> int:
+    from agent_branches.bus import send_task_result
+    payload = args.payload
+    try:
+        payload = json.loads(payload)
+    except Exception:
+        pass
+    res = send_task_result(
+        bus_store=args.bus_store,
+        cred_path=args.cred_path,
+        recipient_id=args.recipient_id,
+        payload=payload,
+        kind=getattr(args, "kind", "task_result"),
+        idempotency_key=getattr(args, "idempotency_key", None),
+    )
+    if as_json:
+        print(json.dumps(res, indent=2))
+    else:
+        print(f"[BUS SENT] Message ID: {res.get('message_id')}")
+        print(f"  Recipient: {res.get('recipient_id')} State: {res.get('state')}")
+    return 0
+
+
+def handle_bus_receive(args: argparse.Namespace, as_json: bool) -> int:
+    from agent_branches.bus import read_unread_messages
+    res = read_unread_messages(
+        bus_store=args.bus_store,
+        cred_path=args.cred_path,
+    )
+    if as_json:
+        print(json.dumps(res, indent=2))
+    else:
+        print(f"[BUS RECEIVE] Unread: {res.get('unread_count')}")
+        for m in res.get("messages", []):
+            print(f"  - [{m.get('message_id')}] from {m.get('sender_id')}: {m.get('body')}")
+    return 0
+
+
+def handle_bus_await_ack(args: argparse.Namespace, as_json: bool) -> int:
+    from agent_branches.bus import await_task_ack
+    timeout_sec = float(getattr(args, "timeout", 30.0) or 30.0)
+    try:
+        res = await_task_ack(
+            bus_store=args.bus_store,
+            cred_path=args.cred_path,
+            expected_ack_for=args.expected_ack_for,
+            timeout_sec=timeout_sec,
+        )
+        if as_json:
+            print(json.dumps(res, indent=2))
+        else:
+            print(f"[BUS ACK RECEIVED] Message ID: {res.get('message_id')} for {res.get('ack_for')}")
+        return 0
+    except TimeoutError as e:
+        if as_json:
+            print(json.dumps({"error": str(e), "status": "timeout"}, indent=2))
+        else:
+            print(f"Error: {e}", file=sys.stderr)
+        return 1
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -864,6 +983,18 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return handle_sync_git(args, as_json)
             else:
                 parser.parse_args(["sync", "--help"])
+                return 1
+        elif args.command == "bus":
+            if getattr(args, "bus_action", None) == "enroll":
+                return handle_bus_enroll(args, as_json)
+            elif getattr(args, "bus_action", None) == "send":
+                return handle_bus_send(args, as_json)
+            elif getattr(args, "bus_action", None) == "receive":
+                return handle_bus_receive(args, as_json)
+            elif getattr(args, "bus_action", None) == "await-ack":
+                return handle_bus_await_ack(args, as_json)
+            else:
+                parser.parse_args(["bus", "--help"])
                 return 1
         else:
             parser.print_help()
