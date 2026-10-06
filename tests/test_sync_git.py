@@ -505,6 +505,20 @@ class TestSyncGit(unittest.TestCase):
         )
         self.assertEqual(cat_res.stdout.strip(), "commit")
 
+        # Durable checkpoint ref must exist and point to published_sha
+        checkpoint_ref = res.get("checkpoint_ref")
+        self.assertIsNotNone(checkpoint_ref)
+        self.assertTrue(checkpoint_ref.startswith("refs/checkpoints/isolated-"))
+        ref_sha = subprocess.run(
+            ["git", "rev-parse", checkpoint_ref],
+            cwd=self.test_dir,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        self.assertEqual(ref_sha, published_sha)
+        self.assertIn("restore-", res.get("restore_instructions", ""))
+
         # Local checkout HEAD remains unchanged
         current_head = subprocess.run(
             ["git", "rev-parse", "HEAD"],
@@ -515,7 +529,128 @@ class TestSyncGit(unittest.TestCase):
         ).stdout.strip()
         self.assertEqual(current_head, initial_head)
 
+    def test_sync_isolated_owned_paths_divergent_collision_fail_closed(self):
+        # 1. Base commit and push
+        base_file = os.path.join(self.test_dir, "owned.txt")
+        with open(base_file, "w") as f:
+            f.write("base content v0\n")
+        subprocess.run(["git", "add", "owned.txt"], cwd=self.test_dir, check=True)
+        subprocess.run(["git", "commit", "-m", "initial commit"], cwd=self.test_dir, check=True)
+        subprocess.run(["git", "push", "origin", "main"], cwd=self.test_dir, check=True)
+
+        initial_head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=self.test_dir,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+        # 2. Simulate concurrent remote edit to owned.txt in a clone
+        remote_clone = tempfile.mkdtemp()
+        try:
+            subprocess.run(["git", "clone", self.remote_dir, remote_clone], check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.name", "Remote Peer"], cwd=remote_clone, check=True)
+            subprocess.run(["git", "config", "user.email", "remote@test.local"], cwd=remote_clone, check=True)
+            with open(os.path.join(remote_clone, "owned.txt"), "w") as f:
+                f.write("remote concurrent edit v1\n")
+            subprocess.run(["git", "commit", "-am", "remote: concurrent edit to owned.txt"], cwd=remote_clone, check=True)
+            subprocess.run(["git", "push", "origin", "main"], cwd=remote_clone, check=True)
+        finally:
+            shutil.rmtree(remote_clone)
+
+        # 3. Local working tree has diverging local edit to owned.txt AND peer dirty file
+        with open(base_file, "w") as f:
+            f.write("local concurrent edit v1\n")
+
+        peer_dirty = os.path.join(self.test_dir, "peer_dirty.txt")
+        with open(peer_dirty, "w") as f:
+            f.write("peer uncommitted changes\n")
+
+        # 4. Attempt isolated sync: MUST fail closed with status: conflict
+        res = sync_isolated_owned_paths(
+            repo_dir=self.test_dir,
+            owned_paths=["owned.txt"],
+            message="feat: attempt overwriting edit",
+        )
+
+        self.assertEqual(res["status"], "conflict")
+        self.assertFalse(res["verified"])
+        self.assertFalse(res["in_sync"])
+        self.assertFalse(res["shared_checkout_advanced"])
+        self.assertIn("owned.txt", res["conflicts"])
+        self.assertIn("Divergent collision", res["error"])
+        self.assertIn("recovery_instructions", res)
+
+        # 5. Local checkout HEAD must be completely untouched
+        current_head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=self.test_dir,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        self.assertEqual(current_head, initial_head)
+
+        # 6. Peer dirty file must remain completely uncommitted and untouched
+        status_out = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=self.test_dir,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        self.assertIn("?? peer_dirty.txt", status_out)
+
+        # 7. Remote tip must NOT have been overwritten
+        remote_cat = subprocess.run(
+            ["git", "show", "origin/main:owned.txt"],
+            cwd=self.test_dir,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        self.assertEqual(remote_cat, "remote concurrent edit v1\n")
+
+    def test_cli_sync_git_isolated_mode(self):
+        from io import StringIO
+        import json
+        from agent_branches.cli import main
+
+        # 1. Base commit and push
+        base_file = os.path.join(self.test_dir, "base.txt")
+        with open(base_file, "w") as f:
+            f.write("base content\n")
+        subprocess.run(["git", "add", "base.txt"], cwd=self.test_dir, check=True)
+        subprocess.run(["git", "commit", "-m", "initial commit"], cwd=self.test_dir, check=True)
+        subprocess.run(["git", "push", "origin", "main"], cwd=self.test_dir, check=True)
+
+        # 2. Modify owned file
+        owned_file = os.path.join(self.test_dir, "cli_owned.txt")
+        with open(owned_file, "w") as f:
+            f.write("cli owned content\n")
+
+        # 3. Call CLI via main()
+        with patch("sys.stdout", new_callable=StringIO) as mock_out:
+            rc = main([
+                "sync",
+                "git",
+                "--repo-dir",
+                self.test_dir,
+                "--owned-path",
+                "cli_owned.txt",
+                "--json",
+            ])
+            self.assertEqual(rc, 0)
+            output = mock_out.getvalue()
+            res = json.loads(output)
+            self.assertEqual(res["status"], "synced")
+            self.assertTrue(res["verified"])
+            self.assertFalse(res["shared_checkout_advanced"])
+            self.assertIn("cli_owned.txt", res["owned_paths"])
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

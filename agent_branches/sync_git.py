@@ -608,6 +608,76 @@ def sync_isolated_owned_paths(
             except subprocess.TimeoutExpired:
                 pass
 
+        # Check for divergent owned-path collision:
+        # If remote branch exists and differs from head_sha, find merge base.
+        # If any owned path was modified on the remote between merge_base and rem_sha,
+        # AND the local file content differs from rem_sha:p, fail closed without publishing!
+        if rem_sha is not None and rem_sha != head_sha:
+            mb_res = subprocess.run(
+                ["git", "merge-base", head_sha, rem_sha],
+                cwd=str(repo_path),
+                capture_output=True,
+                text=True,
+                timeout=SUBPROCESS_TIMEOUT_SEC,
+                check=False,
+            )
+            if mb_res.returncode == 0:
+                merge_base = mb_res.stdout.strip()
+                diff_tree_res = subprocess.run(
+                    ["git", "diff-tree", "-r", "--name-only", "--no-commit-id", merge_base, rem_sha],
+                    cwd=str(repo_path),
+                    capture_output=True,
+                    text=True,
+                    timeout=SUBPROCESS_TIMEOUT_SEC,
+                    check=False,
+                )
+                if diff_tree_res.returncode == 0:
+                    remote_changed = set(diff_tree_res.stdout.splitlines())
+                    colliding = [p for p in normalized_owned if p in remote_changed]
+                    if colliding:
+                        conflicts = []
+                        for p in colliding:
+                            disk_hash_res = subprocess.run(
+                                ["git", "hash-object", p],
+                                cwd=str(repo_path),
+                                capture_output=True,
+                                text=True,
+                                check=False,
+                            )
+                            rem_hash_res = subprocess.run(
+                                ["git", "rev-parse", f"{rem_sha}:{p}"],
+                                cwd=str(repo_path),
+                                capture_output=True,
+                                text=True,
+                                check=False,
+                            )
+                            if rem_hash_res.returncode == 0 and disk_hash_res.returncode == 0:
+                                if disk_hash_res.stdout.strip() != rem_hash_res.stdout.strip():
+                                    conflicts.append(p)
+                        if conflicts:
+                            return {
+                                "status": "conflict",
+                                "error": (
+                                    f"Divergent collision on owned path(s): {', '.join(conflicts)}. "
+                                    f"Remote branch '{target_branch}' has concurrent edits on the same path(s) since merge-base {merge_base[:8]}."
+                                ),
+                                "conflicts": conflicts,
+                                "merge_base": merge_base,
+                                "remote_sha": rem_sha,
+                                "shared_checkout_head": head_sha,
+                                "shared_checkout_advanced": False,
+                                "verified": False,
+                                "in_sync": False,
+                                "message": (
+                                    "Divergent owned-path collision detected. Refusing to overwrite remote changes. "
+                                    "Working tree, index, and HEAD left untouched."
+                                ),
+                                "recovery_instructions": (
+                                    f"Inspect remote changes with `git diff {merge_base[:8]}..{rem_sha[:8]} -- {' '.join(conflicts)}`. "
+                                    f"Manually reconcile or merge before re-syncing."
+                                ),
+                            }
+
         # 4. Use isolated temporary index file
         fd, temp_idx_path = tempfile.mkstemp(prefix="git_idx_isolated_")
         os.close(fd)
@@ -706,32 +776,64 @@ def sync_isolated_owned_paths(
                     check=False,
                 )
             except subprocess.TimeoutExpired as exc:
+                timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+                safe_branch = target_branch.replace("/", "-")
+                checkpoint_ref = f"refs/checkpoints/isolated-{safe_branch}-{timestamp_str}"
+                subprocess.run(
+                    ["git", "update-ref", checkpoint_ref, published_commit_sha],
+                    cwd=str(repo_path),
+                    capture_output=True,
+                    check=False,
+                )
+                restore_instr = (
+                    f"Commit preserved at ref '{checkpoint_ref}' (SHA: {published_commit_sha}). "
+                    f"To inspect: `git show {checkpoint_ref}`. "
+                    f"To branch from checkpoint: `git checkout -b restore-{published_commit_sha[:8]} {checkpoint_ref}`."
+                )
                 return {
                     "status": "unpushed_checkpoint",
                     "branch": target_branch,
                     "published_commit": published_commit_sha,
+                    "checkpoint_ref": checkpoint_ref,
+                    "restore_instructions": restore_instr,
                     "remote_sha": rem_sha,
                     "shared_checkout_head": head_sha,
                     "shared_checkout_advanced": False,
                     "verified": False,
                     "in_sync": False,
                     "error": f"git push timed out after {exc.timeout}s",
-                    "message": "Isolated commit created, but push timed out. History preserved.",
+                    "message": "Isolated commit created, but push timed out. History preserved under checkpoint ref.",
                     "owned_paths": normalized_owned,
                 }
 
             if res_push.returncode != 0:
+                timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+                safe_branch = target_branch.replace("/", "-")
+                checkpoint_ref = f"refs/checkpoints/isolated-{safe_branch}-{timestamp_str}"
+                subprocess.run(
+                    ["git", "update-ref", checkpoint_ref, published_commit_sha],
+                    cwd=str(repo_path),
+                    capture_output=True,
+                    check=False,
+                )
+                restore_instr = (
+                    f"Commit preserved at ref '{checkpoint_ref}' (SHA: {published_commit_sha}). "
+                    f"To inspect: `git show {checkpoint_ref}`. "
+                    f"To branch from checkpoint: `git checkout -b restore-{published_commit_sha[:8]} {checkpoint_ref}`."
+                )
                 return {
                     "status": "unpushed_checkpoint",
                     "branch": target_branch,
                     "published_commit": published_commit_sha,
+                    "checkpoint_ref": checkpoint_ref,
+                    "restore_instructions": restore_instr,
                     "remote_sha": rem_sha,
                     "shared_checkout_head": head_sha,
                     "shared_checkout_advanced": False,
                     "verified": False,
                     "in_sync": False,
                     "error": f"git push failed: {res_push.stderr.strip()}",
-                    "message": "Isolated commit created, but push was rejected (possible concurrent update). History preserved.",
+                    "message": "Isolated commit created, but push was rejected. History preserved under checkpoint ref.",
                     "owned_paths": normalized_owned,
                 }
 

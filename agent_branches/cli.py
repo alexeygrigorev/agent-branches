@@ -388,6 +388,18 @@ def build_parser() -> argparse.ArgumentParser:
     git_sync.add_argument("--preview", action="store_true", help="Preview changes without committing or pushing")
     git_sync.add_argument("--remote", default="origin", help="Git remote name (default: origin)")
     git_sync.add_argument("--repo-dir", default=".", help="Path to repository directory (default: current directory)")
+    git_sync.add_argument("--branch", help="Target branch for sync (default: current branch)")
+    git_sync.add_argument(
+        "--owned-path",
+        action="append",
+        dest="owned_paths",
+        help="Specify an owned path to sync in isolated mode (can be repeated or comma-separated)",
+    )
+    git_sync.add_argument(
+        "--isolated",
+        action="store_true",
+        help="Explicitly enable isolated owned-path sync mode without mutating shared checkout HEAD or index",
+    )
     git_sync.add_argument("--json", action="store_true", help="Output raw JSON")
 
     return parser
@@ -679,11 +691,82 @@ def handle_checks(args: argparse.Namespace, client: AgentBranchesClient, as_json
 
 
 def handle_sync_git(args: argparse.Namespace, as_json: bool) -> int:
-    from agent_branches.sync_git import sync_git, SyncGitError
+    from agent_branches.sync_git import sync_git, sync_isolated_owned_paths, SyncGitError
     repo_dir = getattr(args, "repo_dir", ".") or "."
     message = getattr(args, "message", None)
     preview = bool(getattr(args, "preview", False))
     remote = getattr(args, "remote", "origin") or "origin"
+    branch = getattr(args, "branch", None)
+    isolated = bool(getattr(args, "isolated", False))
+    owned_paths_arg = getattr(args, "owned_paths", None) or []
+
+    # Normalize owned paths
+    owned_paths = []
+    for p_arg in owned_paths_arg:
+        for p in p_arg.split(","):
+            p_clean = p.strip()
+            if p_clean:
+                owned_paths.append(p_clean)
+
+    # If owned-path or isolated flag is provided, execute isolated sync mode
+    if owned_paths or isolated:
+        if not owned_paths:
+            msg = "Isolated sync mode requires at least one path via --owned-path"
+            if as_json:
+                print(json.dumps({"error": msg, "status": "failed"}, indent=2))
+            else:
+                print(f"Error: {msg}", file=sys.stderr)
+            return 1
+
+        try:
+            res = sync_isolated_owned_paths(
+                repo_dir=repo_dir,
+                owned_paths=owned_paths,
+                remote=remote,
+                branch=branch,
+                message=message,
+            )
+            if as_json:
+                print(json.dumps(res, indent=2))
+            else:
+                status = res.get("status")
+                if status == "synced":
+                    print(f"[SYNCED] Isolated owned-path checkpoint committed and pushed successfully.")
+                    print(f"  Branch: {res.get('branch')}")
+                    print(f"  Commit: {res.get('published_commit')}")
+                    print(f"  Remote SHA: {res.get('remote_sha')} (verified: {res.get('verified')})")
+                    print(f"  Shared Checkout HEAD: {res.get('shared_checkout_head')} (unmodified: True)")
+                    print(f"  Owned Paths: {', '.join(res.get('owned_paths', []))}")
+                    return 0
+                elif status == "noop":
+                    print(f"[NOOP] {res.get('message')}")
+                    print(f"  Branch: {res.get('branch')} (Remote SHA: {res.get('remote_sha', '')[:8]})")
+                    return 0
+                elif status == "conflict":
+                    print(f"[CONFLICT] {res.get('error')}", file=sys.stderr)
+                    print(f"  Conflicting Paths: {', '.join(res.get('conflicts', []))}", file=sys.stderr)
+                    print(f"  Recovery Instructions: {res.get('recovery_instructions')}", file=sys.stderr)
+                    return 1
+                elif status == "unpushed_checkpoint":
+                    print(f"[UNPUSHED CHECKPOINT] {res.get('message')}", file=sys.stderr)
+                    print(f"  Branch: {res.get('branch')}", file=sys.stderr)
+                    print(f"  Preserved Commit: {res.get('published_commit')}", file=sys.stderr)
+                    print(f"  Checkpoint Ref: {res.get('checkpoint_ref')}", file=sys.stderr)
+                    print(f"  Restore Instructions: {res.get('restore_instructions')}", file=sys.stderr)
+                    print(f"  Error: {res.get('error')}", file=sys.stderr)
+                    return 1
+                elif status == "push_unverified":
+                    print(f"[PUSH UNVERIFIED] {res.get('message')}", file=sys.stderr)
+                    print(f"  Branch: {res.get('branch')}", file=sys.stderr)
+                    print(f"  Commit: {res.get('published_commit')}", file=sys.stderr)
+                    return 1
+            return 0 if res.get("in_sync") else 1
+        except SyncGitError as e:
+            if as_json:
+                print(json.dumps({"error": str(e), "status": "failed"}, indent=2))
+            else:
+                print(f"Error: {e}", file=sys.stderr)
+            return 1
 
     try:
         res = sync_git(repo_dir=repo_dir, message=message, preview=preview, remote=remote)
