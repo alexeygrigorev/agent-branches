@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -13,6 +14,7 @@ from agent_branches.sync_git import (
     is_forbidden,
     get_status_entries,
     get_staged_entries,
+    get_remote_sha,
     repo_lock,
     SecretLeakageError,
     SyncGitError,
@@ -58,13 +60,53 @@ class TestSyncGit(unittest.TestCase):
         shutil.rmtree(self.remote_dir, ignore_errors=True)
 
     def test_forbidden_patterns(self):
+        # Base patterns
         self.assertTrue(is_forbidden(".env"))
         self.assertTrue(is_forbidden("config/.env.local"))
         self.assertTrue(is_forbidden(".local/state.db"))
         self.assertTrue(is_forbidden("keys/id_rsa"))
         self.assertTrue(is_forbidden("token.txt"))
+
+        # Adversarial review patterns (VULN-SEC-01, VULN-SEC-02, VULN-SEC-03, VULN-SEC-04)
+        self.assertTrue(is_forbidden(".dev.vars"))
+        self.assertTrue(is_forbidden("live/.dev.vars"))
+        self.assertTrue(is_forbidden(".dev.vars.local"))
+        self.assertTrue(is_forbidden("id_ecdsa"))
+        self.assertTrue(is_forbidden("id_ed25519"))
+        self.assertTrue(is_forbidden("id_dsa"))
+        self.assertTrue(is_forbidden("id_ecdsa_sk"))
+        self.assertTrue(is_forbidden("secrets.json"))
+        self.assertTrue(is_forbidden("secret.json"))
+        self.assertTrue(is_forbidden("api_key.json"))
+        self.assertTrue(is_forbidden("auth_token.txt"))
+        self.assertTrue(is_forbidden("service_account.json"))
+        self.assertTrue(is_forbidden("service-account.json"))
+        self.assertTrue(is_forbidden("client_secret.json"))
+        self.assertTrue(is_forbidden(".netrc"))
+        self.assertTrue(is_forbidden(".npmrc"))
+        self.assertTrue(is_forbidden(".pypirc"))
+
+        # Directory-level secret paths
+        self.assertTrue(is_forbidden(".credentials/config"))
+        self.assertTrue(is_forbidden(".secrets/config.json"))
+        self.assertTrue(is_forbidden(".ssh/authorized_keys"))
+        self.assertTrue(is_forbidden(".aws/credentials"))
+        self.assertTrue(is_forbidden(".wrangler/config.json"))
+        self.assertTrue(is_forbidden("__pycache__/app.cpython-310.pyc"))
+        self.assertTrue(is_forbidden("node_modules/pkg/index.js"))
+
+        # Whitelisted documentation templates (OBS-SEC-05)
+        self.assertFalse(is_forbidden(".env.example"))
+        self.assertFalse(is_forbidden("config/.env.example"))
+        self.assertFalse(is_forbidden(".env.template"))
+        self.assertFalse(is_forbidden(".env.sample"))
+
+        # Normal clean files must not be forbidden
+        self.assertFalse(is_forbidden("tokenizer.py"))
+        self.assertFalse(is_forbidden("keywords.py"))
         self.assertFalse(is_forbidden("agent_branches/client.py"))
         self.assertFalse(is_forbidden("tests/test_cli.py"))
+        self.assertFalse(is_forbidden("README.md"))
 
     def test_preview_mode(self):
         # Create a modified file and an untracked safe file
@@ -199,9 +241,104 @@ class TestSyncGit(unittest.TestCase):
         self.assertIn(special_name, untracked_safe)
 
     def test_repo_lock_concurrency(self):
-        with repo_lock(self.test_dir):
+        errors = []
+
+        def contender():
+            try:
+                with repo_lock(self.test_dir, timeout_sec=0.2):
+                    pass
+            except SyncGitError as e:
+                errors.append(e)
+
+        with repo_lock(self.test_dir, timeout_sec=2.0):
             lock_path = Path(self.test_dir) / ".local" / "git.lock"
             self.assertTrue(lock_path.exists())
+            t = threading.Thread(target=contender)
+            t.start()
+            t.join()
+
+        self.assertEqual(len(errors), 1)
+        self.assertIn("Could not acquire repository lock", str(errors[0]))
+
+    def test_pre_staged_new_forbidden_patterns_rejected(self):
+        for bad_file in [".dev.vars", "secrets.json", "api_key.json", "auth_token.txt", "id_ecdsa"]:
+            file_path = os.path.join(self.test_dir, bad_file)
+            with open(file_path, "w") as f:
+                f.write("sensitive data\n")
+            subprocess.run(["git", "add", bad_file], cwd=self.test_dir, check=True)
+            with self.assertRaises(SecretLeakageError):
+                sync_git(self.test_dir)
+            subprocess.run(["git", "rm", "-f", bad_file], cwd=self.test_dir, check=True)
+
+    def test_whitelisted_env_example_can_be_synced(self):
+        env_example = os.path.join(self.test_dir, ".env.example")
+        with open(env_example, "w") as f:
+            f.write("API_KEY=your_key_here\n")
+
+        res = sync_git(self.test_dir, message="docs: add .env.example")
+        self.assertEqual(res["status"], "synced")
+        self.assertIn(".env.example", res["staged_files"])
+
+    def test_push_timeout_handling_returns_unpushed_checkpoint(self):
+        # Create a new commit to push
+        new_file = os.path.join(self.test_dir, "feature_timeout.py")
+        with open(new_file, "w") as f:
+            f.write("# timeout test\n")
+
+        orig_run = subprocess.run
+
+        def mock_run(cmd, *args, **kwargs):
+            if isinstance(cmd, list) and len(cmd) >= 2 and cmd[0] == "git" and cmd[1] == "push":
+                raise subprocess.TimeoutExpired(cmd=cmd, timeout=60.0)
+            return orig_run(cmd, *args, **kwargs)
+
+        with patch("agent_branches.sync_git.subprocess.run", side_effect=mock_run):
+            res = sync_git(self.test_dir, message="feat: push timeout test")
+
+        self.assertEqual(res["status"], "unpushed_checkpoint")
+        self.assertFalse(res["verified"])
+        self.assertFalse(res["in_sync"])
+        self.assertEqual(res["error"], "git push timed out after 60.0s")
+        self.assertIn("timed out", res["message"])
+
+        # Crucial check: verify git commit was preserved on HEAD
+        log_res = subprocess.run(
+            ["git", "log", "-n", "1", "--format=%s"],
+            cwd=self.test_dir,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(log_res.stdout.strip(), "feat: push timeout test")
+
+    def test_clean_ahead_push_timeout_handling(self):
+        # Create commit directly with git, leaving working tree clean but ahead of origin
+        new_file = os.path.join(self.test_dir, "ahead_timeout.py")
+        with open(new_file, "w") as f:
+            f.write("# ahead timeout\n")
+        subprocess.run(["git", "add", "ahead_timeout.py"], cwd=self.test_dir, check=True)
+        subprocess.run(["git", "commit", "-m", "ahead timeout commit"], cwd=self.test_dir, check=True)
+
+        orig_run = subprocess.run
+
+        def mock_run(cmd, *args, **kwargs):
+            if isinstance(cmd, list) and len(cmd) >= 2 and cmd[0] == "git" and cmd[1] == "push":
+                raise subprocess.TimeoutExpired(cmd=cmd, timeout=60.0)
+            return orig_run(cmd, *args, **kwargs)
+
+        with patch("agent_branches.sync_git.subprocess.run", side_effect=mock_run):
+            res = sync_git(self.test_dir)
+
+        self.assertEqual(res["status"], "unpushed_checkpoint")
+        self.assertFalse(res["verified"])
+        self.assertFalse(res["in_sync"])
+        self.assertEqual(res["error"], "git push timed out after 60.0s")
+        self.assertIn("Clean working tree ahead of remote, but git push timed out.", res["message"])
+
+    def test_get_remote_sha_timeout_fail_closed(self):
+        with patch("agent_branches.sync_git.subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd=["git", "ls-remote"], timeout=30.0)
+            sha = get_remote_sha(self.test_dir, "origin", "main")
+            self.assertIsNone(sha)
 
 
 if __name__ == "__main__":
