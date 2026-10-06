@@ -17,3 +17,4 @@ prototype/.sidecar/
 *.pyc
 *.jsonl
 *.telemetry
+scratch/
