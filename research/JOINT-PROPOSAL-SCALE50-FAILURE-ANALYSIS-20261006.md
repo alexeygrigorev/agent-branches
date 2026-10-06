@@ -29,17 +29,17 @@ Across Scopes 1–5, the panel has falsified the simplistic "host RAM exhaustion
 
 ---
 
-## 2. Concrete Corrective Action Matrix
+## 2. Concrete Corrective Action Matrix (Mapped to Canonical TASKS.json)
 
-| Action ID | Scope | Target Component | Proposed Concrete Repair | Owner | Acceptance Criteria |
+| Canonical Task ID | Scope | Target Component | Proposed Concrete Repair | Real Owner | Acceptance Criteria |
 |---|---|---|---|---|---|
-| `REPAIR-S1-01` | Scope 1 | `agent-quota-launcher` | Codify provider-aware task timeouts (minimum 600s for model turns) and persist `DEFAULT_CLEANUP_TIMEOUT_SEC = 600` across all launcher state databases. | QL Head | Zero cleanup tasks terminated by SIGKILL at 120s; cleanups exit 0 and complete cleanly. |
-| `REPAIR-S1-02` | Scope 1 | `supervision_watcher.sh` | Relax supervision watcher staleness threshold from 120s to 600s, requiring two consecutive stale checks before restart. Heartbeat `status.json` at cycle start. | Supervision Head | Supervisor restarts drop from 14/day to <3/day; zero `AckUncertain` lock bursts. |
-| `REPAIR-S1-03` | Scope 1 | Launcher State DBs | Designate `~/.config/agent-quota-launcher/state.db` as canonical, or include all live candidate DBs in monitoring. Namespace dedup keys. | QL Head | Single canonical queue-drained metric; zero collision of `disk-pressure-cleanup-N` IDs. |
-| `REPAIR-S2-01` | Scope 2 | Launcher Dispatch | Decouple review gating: ensure `wait_for_review="dependencies"` allows all ready, dependency-free queued tasks to dispatch immediately up to capacity. | Ant / QL Head | Queue depth >0 immediately triggers parallel launches up to host/provider limits. |
-| `REPAIR-S2-02` | Scope 2 | Continuation Timers | Enforce `TimerCondition="never"` on all critical continuation timers; add supervisor-owned heartbeat pings to eliminate head custody loss. | Ant / Codex | Zero premature timer cancellations; zero unmaintained custody gaps (>15m). |
-| `REPAIR-S3-01` | Scope 3 | Supervision Delivery | Fix readiness pipeline: populate `ready_snapshots` or deliver with explicit `readiness-unknown` annotation once SLO expires (300s). | Supervision Head | `pending-blocked-beyond-slo` events drop from 2,774/day to <50/day. |
-| `REPAIR-S4-01` | Scope 4 | Provider Routing | Implement multi-provider concurrency routing: cap ZAI at 26, overflow to AGY Gemini 3.1 Pro (up to 20), OpenCode Space Bunny, and Go. | QL Head / Ant | Sustained 50 concurrent active workers without 429 rate limits or host OOM. |
+| `scale50-A-dispatch-repair` | Scope 1 | `agent-quota-launcher` | Codify provider-aware task timeouts (minimum 600s for model turns) and persist `DEFAULT_CLEANUP_TIMEOUT_SEC = 600` across all launcher state databases. Consolidate launcher state stores. | QL Head | Zero cleanup tasks terminated by SIGKILL at 120s; cleanups exit 0 and complete cleanly. Single canonical queue-drained metric. |
+| `scale50-21` | Scope 1 / 2 | `supervision_watcher.sh` & Callbacks | Relax supervision watcher staleness threshold from 120s to 600s, requiring two consecutive stale checks before restart. Heartbeat `status.json` at cycle start. Implement real head completion/refill callbacks. | Supervision Head | Supervisor restarts drop from 14/day to <3/day; zero `AckUncertain` lock bursts. |
+| `scale50-D-dispatch-refill` | Scope 2 | Launcher Dispatch | Decouple review gating: ensure `wait_for_review="dependencies"` allows all ready, dependency-free queued tasks to dispatch immediately up to capacity without waiting for unrelated unreviewed tasks. | Ant / QL Head | Queue depth >0 immediately triggers parallel launches up to host/provider limits. |
+| `scale50-E-roster-accountability` | Scope 3 | Roster & Registry Tracking | Implement self-expiring active state (demote entries whose transcript mtime > 5m or PID is dead in `/proc`). Reconcile `task_event()` counter so blocked/review/accepted states do not inflate active counts. | Supervision Head / Codex | Verified roster matches `/proc` live PIDs within ±1; zero dead PIDs listed as `running`. |
+| `scale50-12` / `scale50-31` | Scope 3 | Supervision Readiness | Repair readiness composer pipeline (`ready_snapshots`) to truthfully reflect active/busy/ready state. Never deliver wake messages to unknown composers on timeout; preserve draft/busy gates. | Supervision Head | `pending-blocked-beyond-slo` events drop from 2,774/day to <50/day without delivering to unverified recipients. |
+| `scale50-B-ready-allocation` & `scale50-06` | Scope 4 | Provider Routing | Implement multi-provider concurrency routing: cap ZAI at 26, overflow to AGY Gemini 3.1 Pro, OpenCode Space Bunny, and Go. Adaptive memory admission without artificial 512M drop. | QL Head / Ant | Sustained 50 concurrent active workers without 429 rate limits or host OOM. |
+| `scale50-C-capacity-stages` | Scope 5 | Capacity Staging | Implement staged concurrency validation (10 -> 25 -> 50). Wire epoch-fencing (`rf.guarded_effect` / `rf.authorize`) into launcher admission. | QL Head | Clean 10-worker and 25-worker verification before full 50 ramp; zero cross-generation TMPDIR contamination. |
 
 ---
 
