@@ -725,12 +725,24 @@ def handle_sync_git(args: argparse.Namespace, as_json: bool) -> int:
                 remote=remote,
                 branch=branch,
                 message=message,
+                preview=preview,
             )
             if as_json:
                 print(json.dumps(res, indent=2))
             else:
                 status = res.get("status")
-                if status == "synced":
+                if status == "preview":
+                    print(f"[PREVIEW] Isolated owned-path sync preview for branch: {res.get('branch')}")
+                    print(f"  Target Remote Tip: {res.get('remote_sha')}")
+                    print(f"  Shared Checkout HEAD: {res.get('shared_checkout_head')} (unmodified: True)")
+                    print(f"  Owned Paths to Commit ({len(res.get('owned_paths', []))}):")
+                    for p in res.get("owned_paths", []):
+                        print(f"    {p}")
+                    for line in res.get("diff_summary", []):
+                        print(f"    diff: {line}")
+                    print(f"  {res.get('message')}")
+                    return 0
+                elif status == "synced":
                     print(f"[SYNCED] Isolated owned-path checkpoint committed and pushed successfully.")
                     print(f"  Branch: {res.get('branch')}")
                     print(f"  Commit: {res.get('published_commit')}")
@@ -760,7 +772,7 @@ def handle_sync_git(args: argparse.Namespace, as_json: bool) -> int:
                     print(f"  Branch: {res.get('branch')}", file=sys.stderr)
                     print(f"  Commit: {res.get('published_commit')}", file=sys.stderr)
                     return 1
-            return 0 if res.get("in_sync") else 1
+            return 0 if (res.get("in_sync") or res.get("status") in ("synced", "noop", "preview")) else 1
         except SyncGitError as e:
             if as_json:
                 print(json.dumps({"error": str(e), "status": "failed"}, indent=2))

@@ -537,6 +537,7 @@ def sync_isolated_owned_paths(
     message: Optional[str] = None,
     remote: str = "origin",
     branch: Optional[str] = None,
+    preview: bool = False,
 ) -> Dict[str, Any]:
     """Execute isolated checkpoint and sync of explicitly owned paths onto latest remote.
 
@@ -734,6 +735,36 @@ def sync_isolated_owned_paths(
                     "owned_paths": normalized_owned,
                     "in_sync": True,
                     "verified": True,
+                }
+
+            # Preview mode check: if preview is True, do NOT write tree, commit, push, or create checkpoint refs!
+            if preview:
+                res_diff_stat = subprocess.run(
+                    ["git", "diff-index", "--cached", "--name-status", base_parent_sha],
+                    cwd=str(repo_path),
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=SUBPROCESS_TIMEOUT_SEC,
+                    check=False,
+                )
+                diff_lines = res_diff_stat.stdout.strip().splitlines() if res_diff_stat.returncode == 0 else []
+                return {
+                    "status": "preview",
+                    "branch": target_branch,
+                    "remote": remote,
+                    "remote_sha": rem_sha,
+                    "shared_checkout_head": head_sha,
+                    "shared_checkout_advanced": False,
+                    "owned_paths": normalized_owned,
+                    "staged_in_isolated_index": normalized_owned,
+                    "diff_summary": diff_lines,
+                    "in_sync": False,
+                    "verified": True,
+                    "message": (
+                        f"Preview mode: {len(normalized_owned)} owned path(s) would be committed against remote tip {base_parent_sha[:8]}. "
+                        "No commit created, no push attempted, no checkpoint ref created."
+                    ),
                 }
 
             # Write tree from isolated index

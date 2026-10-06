@@ -649,6 +649,146 @@ class TestSyncGit(unittest.TestCase):
             self.assertFalse(res["shared_checkout_advanced"])
             self.assertIn("cli_owned.txt", res["owned_paths"])
 
+    def test_sync_isolated_owned_paths_preview_mode_does_not_commit_or_push(self):
+        # 1. Base commit and push
+        base_file = os.path.join(self.test_dir, "base.txt")
+        with open(base_file, "w") as f:
+            f.write("base content\n")
+        subprocess.run(["git", "add", "base.txt"], cwd=self.test_dir, check=True)
+        subprocess.run(["git", "commit", "-m", "initial commit"], cwd=self.test_dir, check=True)
+        subprocess.run(["git", "push", "origin", "main"], cwd=self.test_dir, check=True)
+
+        initial_head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=self.test_dir,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+        remote_before = get_remote_sha(self.test_dir, "origin", "main")
+        self.assertEqual(remote_before, initial_head)
+
+        # 2. Modify owned file AND create peer dirty file in working tree
+        owned_file = os.path.join(self.test_dir, "owned_preview.txt")
+        with open(owned_file, "w") as f:
+            f.write("preview content\n")
+
+        peer_dirty = os.path.join(self.test_dir, "peer_dirty.txt")
+        with open(peer_dirty, "w") as f:
+            f.write("peer dirty content\n")
+
+        # 3. Call sync_isolated_owned_paths in PREVIEW mode
+        res = sync_isolated_owned_paths(
+            repo_dir=self.test_dir,
+            owned_paths=["owned_preview.txt"],
+            message="feat: preview test",
+            preview=True,
+        )
+
+        self.assertEqual(res["status"], "preview")
+        self.assertFalse(res["shared_checkout_advanced"])
+        self.assertFalse(res["in_sync"])
+        self.assertTrue(res["verified"])
+        self.assertIn("owned_preview.txt", res["owned_paths"])
+        self.assertIn("Preview mode", res["message"])
+
+        # 4. Verify local checkout HEAD is completely unchanged
+        current_head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=self.test_dir,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        self.assertEqual(current_head, initial_head)
+
+        # 5. Verify peer dirty file is completely untouched
+        status_out = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=self.test_dir,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        self.assertIn("?? peer_dirty.txt", status_out)
+
+        # 6. Verify remote tip was NOT changed
+        remote_after = get_remote_sha(self.test_dir, "origin", "main")
+        self.assertEqual(remote_after, remote_before)
+
+        # 7. Verify NO checkpoint refs were created
+        refs_out = subprocess.run(
+            ["git", "for-each-ref", "refs/checkpoints/"],
+            cwd=self.test_dir,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        self.assertEqual(refs_out, "")
+
+    def test_cli_sync_git_isolated_preview_mode(self):
+        from io import StringIO
+        import json
+        from agent_branches.cli import main
+
+        # 1. Base commit and push
+        base_file = os.path.join(self.test_dir, "base.txt")
+        with open(base_file, "w") as f:
+            f.write("base content\n")
+        subprocess.run(["git", "add", "base.txt"], cwd=self.test_dir, check=True)
+        subprocess.run(["git", "commit", "-m", "initial commit"], cwd=self.test_dir, check=True)
+        subprocess.run(["git", "push", "origin", "main"], cwd=self.test_dir, check=True)
+
+        remote_before = get_remote_sha(self.test_dir, "origin", "main")
+
+        # 2. Modify owned file
+        owned_file = os.path.join(self.test_dir, "cli_preview_doc.txt")
+        with open(owned_file, "w") as f:
+            f.write("cli preview doc content\n")
+
+        # 3. Call CLI in preview mode
+        with patch("sys.stdout", new_callable=StringIO) as mock_out:
+            rc = main([
+                "sync",
+                "git",
+                "--repo-dir",
+                self.test_dir,
+                "--owned-path",
+                "cli_preview_doc.txt",
+                "--preview",
+                "--json",
+            ])
+            self.assertEqual(rc, 0)
+            res = json.loads(mock_out.getvalue())
+            self.assertEqual(res["status"], "preview")
+            self.assertFalse(res["shared_checkout_advanced"])
+
+        # Remote tip must be untouched after preview
+        remote_after = get_remote_sha(self.test_dir, "origin", "main")
+        self.assertEqual(remote_after, remote_before)
+
+        # 4. Now call CLI in non-preview mode: must push and advance remote
+        with patch("sys.stdout", new_callable=StringIO) as mock_out:
+            rc = main([
+                "sync",
+                "git",
+                "--repo-dir",
+                self.test_dir,
+                "--owned-path",
+                "cli_preview_doc.txt",
+                "--json",
+            ])
+            self.assertEqual(rc, 0)
+            res = json.loads(mock_out.getvalue())
+            self.assertEqual(res["status"], "synced")
+            self.assertTrue(res["verified"])
+
+        # Remote tip must now be updated to the published commit
+        remote_synced = get_remote_sha(self.test_dir, "origin", "main")
+        self.assertEqual(remote_synced, res["published_commit"])
+        self.assertNotEqual(remote_synced, remote_before)
+
 
 if __name__ == "__main__":
     unittest.main()
