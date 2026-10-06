@@ -436,6 +436,12 @@ def build_parser() -> argparse.ArgumentParser:
     bus_await.add_argument("--timeout", type=float, default=30.0, help="Timeout in seconds (default: 30.0)")
     bus_await.add_argument("--json", action="store_true", help="Output raw JSON")
 
+    bus_ack = bus_sub.add_parser("ack", help="Acknowledge incoming message and advance durable cursor")
+    bus_ack.add_argument("--bus-store", required=True, help="Path to bus directory store")
+    bus_ack.add_argument("--cred-path", required=True, help="Path to 0600 credentials JSON")
+    bus_ack.add_argument("--message-id", required=True, help="Message ID to acknowledge")
+    bus_ack.add_argument("--json", action="store_true", help="Output raw JSON")
+
     return parser
 
 
@@ -948,6 +954,25 @@ def handle_bus_await_ack(args: argparse.Namespace, as_json: bool) -> int:
         return 1
 
 
+def handle_bus_ack(args: argparse.Namespace, as_json: bool) -> int:
+    from pathlib import Path
+    from agent_branches.bus import SessionlessWorkerBus
+    store_path = Path(args.bus_store).resolve()
+    cred_file = Path(args.cred_path).resolve()
+    worker = SessionlessWorkerBus.from_credentials(store=store_path, cred=cred_file)
+    read_ack = worker.ack(args.message_id)
+    if as_json:
+        print(json.dumps({
+            "status": "acknowledged",
+            "message_id": args.message_id,
+            "read_ack_state": read_ack.state.value,
+            "cursor": worker.current_cursor(),
+        }, indent=2))
+    else:
+        print(f"[BUS ACK] Message {args.message_id} acknowledged, cursor at {worker.current_cursor()}")
+    return 0
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     """Main CLI entrypoint."""
     parser = build_parser()
@@ -993,6 +1018,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return handle_bus_receive(args, as_json)
             elif getattr(args, "bus_action", None) == "await-ack":
                 return handle_bus_await_ack(args, as_json)
+            elif getattr(args, "bus_action", None) == "ack":
+                return handle_bus_ack(args, as_json)
             else:
                 parser.parse_args(["bus", "--help"])
                 return 1
