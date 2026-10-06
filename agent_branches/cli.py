@@ -442,6 +442,17 @@ def build_parser() -> argparse.ArgumentParser:
     bus_ack.add_argument("--message-id", required=True, help="Message ID to acknowledge")
     bus_ack.add_argument("--json", action="store_true", help="Output raw JSON")
 
+    # roster command (Roster accountability & reconciliation)
+    roster_parser = subparsers.add_parser("roster", help="Roster accountability operations")
+    roster_sub = roster_parser.add_subparsers(dest="roster_action", help="Roster actions")
+
+    roster_verify = roster_sub.add_parser("verify", help="Verify and reconcile a roster snapshot")
+    roster_verify.add_argument("--file", "-f", help="Path to roster JSON file (reads stdin if omitted)")
+    roster_verify.add_argument("--ttl", type=float, default=300.0, help="Max TTL in seconds (default: 300.0)")
+    roster_verify.add_argument("--no-proc", action="store_true", help="Skip /proc PID liveness check")
+    roster_verify.add_argument("--proc-root", default="/proc", help="Root directory for /proc check (default: /proc)")
+    roster_verify.add_argument("--json", action="store_true", help="Output raw JSON")
+
     return parser
 
 
@@ -973,6 +984,36 @@ def handle_bus_ack(args: argparse.Namespace, as_json: bool) -> int:
     return 0
 
 
+def handle_roster_verify(args: argparse.Namespace, as_json: bool) -> int:
+    from agent_branches.roster import verify_roster_snapshot
+    if args.file:
+        with open(args.file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    else:
+        data = json.load(sys.stdin)
+
+    res = verify_roster_snapshot(
+        roster_data=data,
+        max_ttl_seconds=args.ttl,
+        verify_proc=not args.no_proc,
+        proc_root=args.proc_root,
+    )
+    if as_json:
+        print(json.dumps(res, indent=2))
+    else:
+        print(f"[ROSTER VERIFY] Status: {res.get('status')} (Valid: {res.get('valid')})")
+        print(f"  Reason: {res.get('reason')}")
+        print(
+            f"  Claimed: {res.get('claimed_workers_count', 0)}, "
+            f"Verified Active: {res.get('verified_active_count', 0)}, "
+            f"Demoted: {res.get('demoted_count', 0)}"
+        )
+        print(f"  Active PIDs: {res.get('verified_active_pids')}")
+        if res.get("demoted_pids"):
+            print(f"  Demoted PIDs: {res.get('demoted_pids')}")
+    return 0 if res.get("valid") else 1
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     """Main CLI entrypoint."""
     parser = build_parser()
@@ -1022,6 +1063,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return handle_bus_ack(args, as_json)
             else:
                 parser.parse_args(["bus", "--help"])
+                return 1
+        elif args.command == "roster":
+            if getattr(args, "roster_action", None) == "verify":
+                return handle_roster_verify(args, as_json)
+            else:
+                parser.parse_args(["roster", "--help"])
                 return 1
         else:
             parser.print_help()

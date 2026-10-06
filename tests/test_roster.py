@@ -74,3 +74,36 @@ def test_roster_proc_liveness_reconciliation():
         assert res["demoted_count"] == 1
         assert res["verified_active_pids"] == [pid_live]
         assert res["demoted_pids"] == [pid_dead]
+
+
+def test_cli_roster_verify_valid(tmp_path: Path):
+    from agent_branches.cli import main
+    import json
+
+    roster_file = tmp_path / "roster.json"
+    now_str = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    roster_data = {
+        "claimed_as_of": now_str,
+        "workers": [{"pid": os.getpid(), "role": "self-test"}],
+    }
+    roster_file.write_text(json.dumps(roster_data), encoding="utf-8")
+
+    rc = main(["roster", "verify", "--file", str(roster_file), "--no-proc", "--json"])
+    assert rc == 0
+
+
+def test_cli_roster_verify_future_rejected(tmp_path: Path):
+    from agent_branches.cli import main
+    import json
+
+    roster_file = tmp_path / "roster_future.json"
+    future_str = (dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    roster_data = {
+        "claimed_as_of": future_str,
+        "workers": [{"pid": os.getpid(), "role": "future-worker"}],
+    }
+    roster_file.write_text(json.dumps(roster_data), encoding="utf-8")
+
+    rc = main(["roster", "verify", "--file", str(roster_file), "--no-proc", "--json"])
+    assert rc == 1
+
