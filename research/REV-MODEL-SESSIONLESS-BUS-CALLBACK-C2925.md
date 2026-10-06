@@ -50,7 +50,7 @@ The worker credentials and identity registration were inspected directly from di
     "kind": "bus-agent",
     "created_at": "2026-10-06T17:42:46Z"
   },
-  "token": "21ff9698-9eae-4aae-9200-e89ead930bd4"
+  "token": "[REDACTED-EPHEMERAL-TOKEN]"
 }
 ```
 
