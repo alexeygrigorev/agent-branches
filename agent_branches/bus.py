@@ -18,10 +18,10 @@ import sys
 import time
 from typing import Any, Dict, Optional
 
-# Ensure agent-bus and agent-coordination are on sys.path if not installed
-for extra_path in ("/home/alexey/git/agent-bus", "/home/alexey/git/agent-coordination"):
-    if extra_path not in sys.path and os.path.exists(extra_path):
-        sys.path.insert(0, extra_path)
+# Ensure standalone agent-bus is on sys.path if not installed
+extra_path = "/home/alexey/git/agent-bus"
+if extra_path not in sys.path and os.path.exists(extra_path):
+    sys.path.insert(0, extra_path)
 
 try:
     from bus_envelope import validate_bus_envelope
