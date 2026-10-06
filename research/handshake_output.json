@@ -1,0 +1,32 @@
+{
+  "send_res": {
+    "status": "sent",
+    "message_id": "3a825e78-203b-4b73-a83f-de5ef016c0a6",
+    "idempotency_key": "result-130d36ff-797a-47c7-b4cd-0830329b1864-1791287223118",
+    "recipient_id": "371a215c-a75b-4350-92df-b252722f884f",
+    "sender_identity_id": "130d36ff-797a-47c7-b4cd-0830329b1864",
+    "sender_namespaced_id": "hetzner-rmthz/agent-branches/branches-model-worker/-/t-bus-model-ack-c2826",
+    "state": "send_receipt",
+    "sent_at": "2026-10-06T11:47:03.144391+00:00"
+  },
+  "ack_res": {
+    "status": "ack_received",
+    "message_id": "ac1b1172-8526-449f-9aa0-1dd56d88ee1c",
+    "ack_for": "3a825e78-203b-4b73-a83f-de5ef016c0a6",
+    "coordinator_verdict": "BIDIRECTIONAL_HANDSHAKE_VERIFIED",
+    "payload": {
+      "task_id": "t-bus-model-ack-c2826",
+      "ack_for": "3a825e78-203b-4b73-a83f-de5ef016c0a6",
+      "status": "accepted",
+      "coordinator_verdict": "BIDIRECTIONAL_HANDSHAKE_VERIFIED",
+      "timestamp_utc": "2026-10-06T11:47:30.740913+00:00"
+    },
+    "read_ack_state": "recipient_read_ack",
+    "received_at": "2026-10-06T11:47:31.192614+00:00"
+  },
+  "unread_res": {
+    "status": "ok",
+    "unread_count": 0,
+    "messages": []
+  }
+}
