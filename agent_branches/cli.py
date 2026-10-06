@@ -402,6 +402,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     git_sync.add_argument("--json", action="store_true", help="Output raw JSON")
 
+    dogfood_sync = sync_sub.add_parser("dogfood", help="Run 3-stage automated dogfood pipeline (preview, isolated push, remote recovery)")
+    dogfood_sync.add_argument("--json", action="store_true", help="Output raw JSON")
+
     # bus command (AgentBus standalone worker transport)
     bus_parser = subparsers.add_parser("bus", help="AgentBus standalone worker transport operations")
     bus_sub = bus_parser.add_subparsers(dest="bus_action", help="Bus actions")
@@ -886,6 +889,20 @@ def handle_sync_git(args: argparse.Namespace, as_json: bool) -> int:
         return 1
 
 
+def handle_sync_dogfood(args: argparse.Namespace, as_json: bool) -> int:
+    from scripts.dogfood_branches_sync import run_dogfood_pipeline
+    results = run_dogfood_pipeline()
+    if as_json:
+        print(json.dumps(results, indent=2))
+    else:
+        print(f"[DOGFOOD PIPELINE] Status: {'SUCCESS' if results.get('success') else 'FAILED'}")
+        print(f"  Pipeline ID: {results.get('pipeline_id')}")
+        print(f"  Branch: {results.get('branch_name')}")
+        for stage, data in results.get("stages", {}).items():
+            print(f"  - {stage}: status={data.get('status')} verified={data.get('verified')}")
+    return 0 if results.get("success") else 1
+
+
 def handle_bus_enroll(args: argparse.Namespace, as_json: bool) -> int:
     from agent_branches.bus import enroll_worker_startup
     res = enroll_worker_startup(
@@ -1047,6 +1064,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         elif args.command == "sync":
             if getattr(args, "sync_action", None) == "git":
                 return handle_sync_git(args, as_json)
+            elif getattr(args, "sync_action", None) == "dogfood":
+                return handle_sync_dogfood(args, as_json)
             else:
                 parser.parse_args(["sync", "--help"])
                 return 1

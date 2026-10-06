@@ -16,3 +16,10 @@ def test_dogfood_branches_sync_pipeline_end_to_end():
     assert "remote_recovery" in res["stages"]
     assert res["stages"]["remote_recovery"]["status"] == "PASSED"
     assert res["stages"]["remote_recovery"]["leakage_clean"] is True
+
+
+def test_cli_sync_dogfood():
+    from agent_branches.cli import main
+    rc = main(["sync", "dogfood", "--json"])
+    assert rc == 0
+
