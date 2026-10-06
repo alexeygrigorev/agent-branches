@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from agent_branches.sync_git import (
     sync_git,
+    sync_isolated_owned_paths,
     is_forbidden,
     get_status_entries,
     get_staged_entries,
@@ -340,6 +341,181 @@ class TestSyncGit(unittest.TestCase):
             sha = get_remote_sha(self.test_dir, "origin", "main")
             self.assertIsNone(sha)
 
+    def test_sync_isolated_owned_paths_success_and_shared_checkout_untouched(self):
+        # 1. Base commit and push to remote
+        base_file = os.path.join(self.test_dir, "base.txt")
+        with open(base_file, "w") as f:
+            f.write("base content\n")
+        subprocess.run(["git", "add", "base.txt"], cwd=self.test_dir, check=True)
+        subprocess.run(["git", "commit", "-m", "initial commit"], cwd=self.test_dir, check=True)
+        subprocess.run(["git", "push", "origin", "main"], cwd=self.test_dir, check=True)
+
+        initial_head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=self.test_dir,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+        # 2. Modify owned file AND create peer dirty file in working tree
+        owned_file = os.path.join(self.test_dir, "owned.txt")
+        with open(owned_file, "w") as f:
+            f.write("owned content v1\n")
+
+        peer_dirty = os.path.join(self.test_dir, "peer_dirty.txt")
+        with open(peer_dirty, "w") as f:
+            f.write("peer uncommitted work\n")
+
+        # 3. Execute isolated owned-path sync
+        res = sync_isolated_owned_paths(
+            repo_dir=self.test_dir,
+            owned_paths=["owned.txt"],
+            message="feat: isolated sync",
+        )
+
+        self.assertEqual(res["status"], "synced")
+        self.assertTrue(res["verified"])
+        self.assertTrue(res["in_sync"])
+        self.assertFalse(res["shared_checkout_advanced"])
+        self.assertEqual(res["shared_checkout_head"], initial_head)
+        self.assertNotEqual(res["published_commit"], initial_head)
+
+        # 4. Local checkout HEAD must be completely unchanged
+        current_head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=self.test_dir,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        self.assertEqual(current_head, initial_head)
+
+        # 5. Peer dirty file must remain completely uncommitted and untracked
+        status_out = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=self.test_dir,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        self.assertIn("peer_dirty.txt", status_out)
+        self.assertIn("?? peer_dirty.txt", status_out)
+
+        # 6. Verify remote tip contains owned.txt but NOT peer_dirty.txt
+        remote_ls = subprocess.run(
+            ["git", "ls-tree", "-r", "--name-only", res["published_commit"]],
+            cwd=self.test_dir,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.splitlines()
+        self.assertIn("base.txt", remote_ls)
+        self.assertIn("owned.txt", remote_ls)
+        self.assertNotIn("peer_dirty.txt", remote_ls)
+
+    def test_sync_isolated_owned_paths_noop(self):
+        # 1. Base commit and push
+        base_file = os.path.join(self.test_dir, "base.txt")
+        with open(base_file, "w") as f:
+            f.write("base content\n")
+        subprocess.run(["git", "add", "base.txt"], cwd=self.test_dir, check=True)
+        subprocess.run(["git", "commit", "-m", "initial commit"], cwd=self.test_dir, check=True)
+        subprocess.run(["git", "push", "origin", "main"], cwd=self.test_dir, check=True)
+
+        # 2. Add owned.txt and sync
+        owned_file = os.path.join(self.test_dir, "owned.txt")
+        with open(owned_file, "w") as f:
+            f.write("version 1\n")
+        res1 = sync_isolated_owned_paths(self.test_dir, owned_paths=["owned.txt"])
+        self.assertEqual(res1["status"], "synced")
+
+        # 3. Call sync again without any changes to owned.txt
+        res2 = sync_isolated_owned_paths(self.test_dir, owned_paths=["owned.txt"])
+        self.assertEqual(res2["status"], "noop")
+        self.assertTrue(res2["in_sync"])
+        self.assertTrue(res2["verified"])
+        self.assertEqual(res2["published_commit"], res1["published_commit"])
+
+    def test_sync_isolated_owned_paths_secret_forbidden(self):
+        secret_file = os.path.join(self.test_dir, ".dev.vars")
+        with open(secret_file, "w") as f:
+            f.write("CLOUDFLARE_API_TOKEN=supersecret\n")
+
+        with self.assertRaises(SecretLeakageError):
+            sync_isolated_owned_paths(self.test_dir, owned_paths=[".dev.vars"])
+
+    def test_sync_isolated_owned_paths_missing_owned_path(self):
+        with self.assertRaises(SyncGitError) as ctx:
+            sync_isolated_owned_paths(self.test_dir, owned_paths=["nonexistent_file.txt"])
+        self.assertIn("Owned path does not exist on disk", str(ctx.exception))
+
+    def test_sync_isolated_owned_paths_push_rejection_preserves_checkpoint(self):
+        # 1. Base commit and push
+        base_file = os.path.join(self.test_dir, "base.txt")
+        with open(base_file, "w") as f:
+            f.write("base content\n")
+        subprocess.run(["git", "add", "base.txt"], cwd=self.test_dir, check=True)
+        subprocess.run(["git", "commit", "-m", "initial commit"], cwd=self.test_dir, check=True)
+        subprocess.run(["git", "push", "origin", "main"], cwd=self.test_dir, check=True)
+
+        initial_head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=self.test_dir,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+        # 2. Modify owned file
+        owned_file = os.path.join(self.test_dir, "owned.txt")
+        with open(owned_file, "w") as f:
+            f.write("isolated update\n")
+
+        # 3. Mock git push failure
+        orig_run = subprocess.run
+
+        def mock_run(cmd, *args, **kwargs):
+            if isinstance(cmd, list) and len(cmd) >= 2 and cmd[0] == "git" and cmd[1] == "push":
+                return subprocess.CompletedProcess(
+                    args=cmd,
+                    returncode=1,
+                    stdout="",
+                    stderr="To remote\n ! [rejected] main -> main (non-fast-forward)",
+                )
+            return orig_run(cmd, *args, **kwargs)
+
+        with patch("agent_branches.sync_git.subprocess.run", side_effect=mock_run):
+            res = sync_isolated_owned_paths(self.test_dir, owned_paths=["owned.txt"])
+
+        self.assertEqual(res["status"], "unpushed_checkpoint")
+        self.assertFalse(res["verified"])
+        self.assertFalse(res["in_sync"])
+        self.assertFalse(res["shared_checkout_advanced"])
+        self.assertIn("rejected", res["error"])
+
+        # Published commit was created in git object db
+        published_sha = res["published_commit"]
+        cat_res = subprocess.run(
+            ["git", "cat-file", "-t", published_sha],
+            cwd=self.test_dir,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertEqual(cat_res.stdout.strip(), "commit")
+
+        # Local checkout HEAD remains unchanged
+        current_head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=self.test_dir,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        self.assertEqual(current_head, initial_head)
+
 
 if __name__ == "__main__":
     unittest.main()
+

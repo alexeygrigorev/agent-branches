@@ -19,6 +19,7 @@ import fcntl
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -528,3 +529,229 @@ def sync_git(
             "staged_files": to_stage,
             "ignored_forbidden": untracked_forbidden,
         }
+
+
+def sync_isolated_owned_paths(
+    repo_dir: str,
+    owned_paths: List[str],
+    message: Optional[str] = None,
+    remote: str = "origin",
+    branch: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Execute isolated checkpoint and sync of explicitly owned paths onto latest remote.
+
+    Guarantees:
+    - Never mutates shared working tree, shared .git/index, or peer dirty files.
+    - Never advances local checkout HEAD (shared_checkout_advanced: False).
+    - Uses an isolated temporary GIT_INDEX_FILE.
+    - Replays owned paths onto the latest fetched remote branch tip.
+    - Pushes directly via refspec <commit_sha>:refs/heads/<branch>.
+    - Verifies remote tip via ls-remote.
+    - Fails closed if any owned path is forbidden or on non-fast-forward conflict.
+    """
+    repo_path = Path(repo_dir).resolve()
+    if not (repo_path / ".git").exists():
+        raise SyncGitError(f"Not a git repository: {repo_path}")
+
+    if not owned_paths:
+        raise SyncGitError("owned_paths must be a non-empty list of paths.")
+
+    # 1. Guard against forbidden/sensitive paths and validate existence
+    normalized_owned = []
+    for p in owned_paths:
+        p_str = str(p).strip()
+        if not p_str:
+            continue
+        if is_forbidden(p_str):
+            raise SecretLeakageError(f"Refusing to sync forbidden/sensitive path in owned paths: {p_str}")
+        full_p = (repo_path / p_str).resolve()
+        if not full_p.is_relative_to(repo_path):
+            raise SyncGitError(f"Path traversal forbidden: {p_str}")
+        if not full_p.exists():
+            raise SyncGitError(f"Owned path does not exist on disk: {p_str}")
+        rel_p = str(full_p.relative_to(repo_path))
+        normalized_owned.append(rel_p)
+
+    if not normalized_owned:
+        raise SyncGitError("No valid owned paths provided after normalization.")
+
+    with repo_lock(str(repo_path)):
+        target_branch = branch or get_current_branch(str(repo_path))
+
+        # 2. Get local shared checkout HEAD
+        try:
+            head_sha = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=str(repo_path),
+                capture_output=True,
+                text=True,
+                timeout=SUBPROCESS_TIMEOUT_SEC,
+                check=True,
+            ).stdout.strip()
+        except subprocess.TimeoutExpired as exc:
+            raise SyncGitError(f"git rev-parse HEAD timed out after {exc.timeout}s")
+
+        # 3. Query remote tip for target branch
+        rem_sha = get_remote_sha(str(repo_path), remote, target_branch)
+        if rem_sha is None:
+            base_parent_sha = head_sha
+        else:
+            base_parent_sha = rem_sha
+            try:
+                subprocess.run(
+                    ["git", "fetch", remote, target_branch],
+                    cwd=str(repo_path),
+                    capture_output=True,
+                    timeout=SUBPROCESS_TIMEOUT_SEC,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired:
+                pass
+
+        # 4. Use isolated temporary index file
+        fd, temp_idx_path = tempfile.mkstemp(prefix="git_idx_isolated_")
+        os.close(fd)
+        temp_idx = Path(temp_idx_path)
+
+        try:
+            env = dict(os.environ)
+            env["GIT_INDEX_FILE"] = str(temp_idx)
+
+            # Read base parent tree into temporary index
+            res_rt = subprocess.run(
+                ["git", "read-tree", base_parent_sha],
+                cwd=str(repo_path),
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=SUBPROCESS_TIMEOUT_SEC,
+                check=False,
+            )
+            if res_rt.returncode != 0:
+                raise SyncGitError(f"git read-tree {base_parent_sha} failed: {res_rt.stderr.strip()}")
+
+            # Add only owned paths into temporary index
+            res_add = subprocess.run(
+                ["git", "add", "--"] + normalized_owned,
+                cwd=str(repo_path),
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=SUBPROCESS_TIMEOUT_SEC,
+                check=False,
+            )
+            if res_add.returncode != 0:
+                raise SyncGitError(f"git add to isolated index failed: {res_add.stderr.strip()}")
+
+            # Check if isolated index differs from base parent
+            res_diff = subprocess.run(
+                ["git", "diff-index", "--cached", "--quiet", base_parent_sha],
+                cwd=str(repo_path),
+                env=env,
+                capture_output=True,
+                timeout=SUBPROCESS_TIMEOUT_SEC,
+                check=False,
+            )
+            if res_diff.returncode == 0:
+                return {
+                    "status": "noop",
+                    "message": "Specified owned paths are already identical to remote tip",
+                    "branch": target_branch,
+                    "published_commit": base_parent_sha,
+                    "remote_sha": rem_sha,
+                    "shared_checkout_head": head_sha,
+                    "shared_checkout_advanced": False,
+                    "owned_paths": normalized_owned,
+                    "in_sync": True,
+                    "verified": True,
+                }
+
+            # Write tree from isolated index
+            res_wt = subprocess.run(
+                ["git", "write-tree"],
+                cwd=str(repo_path),
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=SUBPROCESS_TIMEOUT_SEC,
+                check=False,
+            )
+            if res_wt.returncode != 0:
+                raise SyncGitError(f"git write-tree failed: {res_wt.stderr.strip()}")
+            tree_sha = res_wt.stdout.strip()
+
+            # Create commit object parented to base_parent_sha
+            commit_msg = message or f"WIP: isolated sync checkpoint ({len(normalized_owned)} owned paths) at {datetime.now(timezone.utc).isoformat()}"
+            res_ct = subprocess.run(
+                ["git", "commit-tree", tree_sha, "-p", base_parent_sha, "-m", commit_msg],
+                cwd=str(repo_path),
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=SUBPROCESS_TIMEOUT_SEC,
+                check=False,
+            )
+            if res_ct.returncode != 0:
+                raise SyncGitError(f"git commit-tree failed: {res_ct.stderr.strip()}")
+            published_commit_sha = res_ct.stdout.strip()
+
+            # Push directly using refspec
+            try:
+                res_push = subprocess.run(
+                    ["git", "push", remote, f"{published_commit_sha}:refs/heads/{target_branch}"],
+                    cwd=str(repo_path),
+                    capture_output=True,
+                    text=True,
+                    timeout=PUSH_TIMEOUT_SEC,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as exc:
+                return {
+                    "status": "unpushed_checkpoint",
+                    "branch": target_branch,
+                    "published_commit": published_commit_sha,
+                    "remote_sha": rem_sha,
+                    "shared_checkout_head": head_sha,
+                    "shared_checkout_advanced": False,
+                    "verified": False,
+                    "in_sync": False,
+                    "error": f"git push timed out after {exc.timeout}s",
+                    "message": "Isolated commit created, but push timed out. History preserved.",
+                    "owned_paths": normalized_owned,
+                }
+
+            if res_push.returncode != 0:
+                return {
+                    "status": "unpushed_checkpoint",
+                    "branch": target_branch,
+                    "published_commit": published_commit_sha,
+                    "remote_sha": rem_sha,
+                    "shared_checkout_head": head_sha,
+                    "shared_checkout_advanced": False,
+                    "verified": False,
+                    "in_sync": False,
+                    "error": f"git push failed: {res_push.stderr.strip()}",
+                    "message": "Isolated commit created, but push was rejected (possible concurrent update). History preserved.",
+                    "owned_paths": normalized_owned,
+                }
+
+            # Verify remote SHA matches published commit
+            rem_sha_after = get_remote_sha(str(repo_path), remote, target_branch)
+            verified = (rem_sha_after == published_commit_sha)
+
+            return {
+                "status": "synced" if verified else "push_unverified",
+                "branch": target_branch,
+                "published_commit": published_commit_sha,
+                "remote_sha": rem_sha_after,
+                "shared_checkout_head": head_sha,
+                "shared_checkout_advanced": False,
+                "owned_paths": normalized_owned,
+                "verified": verified,
+                "in_sync": verified,
+                "commit_message": commit_msg,
+                "message": "Isolated owned-path commit successfully pushed to remote without mutating shared checkout.",
+            }
+        finally:
+            temp_idx.unlink(missing_ok=True)
+
