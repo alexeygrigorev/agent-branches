@@ -1,3 +1,11 @@
+# Agent Branches
+
+## What this project works toward
+
+Make Agent Branches solve the disk pain of worktrees that copy the whole workspace, give the founder a CLI he can demo including a `branches sync git` style command, keep it from being Rust-focused, keep Cloudflare behind a facade, and use the tool for our own work.
+
+Heads read ~/git/cloudflare-agent-git/_docs/team/04-head.md for the role and ~/git/cloudflare-agent-git/_docs/04-communication.md for messaging.
+
 Read /home/alexey/git/cloudflare-agent-git/AGENTS.md and coordination/OPERATING-MODEL.md, RESOURCE-POLICY.md, USER-STEERING.md, latest experiment/human-delivery-reset-20261004.txt plus ~/git/.agents/skills/a2a-communication/SKILL.md and external-model-agents/SKILL.md. You own ONLY new /home/alexey/git/agent-branches extraction source and scripts; /home/alexey/git/agent-branches-integration is read-only peer-owned authority. No Rust builds/install/purchases/globalinstall/secretpublication/oldtreecleanup/forcedpush. Max1500M, scratch<=512MiB in .local/tmp, retainMemAvailable10GiB androotfree50GB. Freshquse beforelaunch. Never print private credential/config. DefaultprivateGitHub sourcebackup ordinaryGit recovery; explicit paths and locked commits.
 
 This checkout is the standalone Agent Branches product source extracted from pinned integration commit `db4f6a8c398d69f0e19072c41cb4b453b7dd1b71`. Keep secrets, `.local/`, tokens, logs, and `local-coordinator-state.json` out of Git. Sync `main` with `scripts/sync-main.sh` only (no force). Independent review is required before task `ab-standalone-private-source-project` is accepted done.
